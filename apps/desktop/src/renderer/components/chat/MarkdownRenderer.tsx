@@ -20,7 +20,7 @@ import { useImageLoadFailure } from './useImageLoadFailure';
 import { ChatLoadingImage } from './ChatLoadingImage';
 import { FileTypeIcon } from '@/components/ui/file-type-icon';
 import { CHAT_CODE_CLASS, CHAT_CODE_SURFACE_CLASS, CHAT_ICON_BUTTON_CLASS } from './chatChrome';
-import { createElement, memo, useId, useCallback, useEffect, useRef, useState, useMemo, isValidElement, type ClipboardEvent as ReactClipboardEvent, type HTMLAttributes, type ReactNode } from 'react';
+import { createElement, memo, useId, useCallback, useEffect, useRef, useState, useMemo, isValidElement, type HTMLAttributes, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkCjkFriendly from 'remark-cjk-friendly';
@@ -1751,30 +1751,6 @@ function InlineCodeWithTarget({
   );
 }
 
-const CLIPBOARD_MEDIA_SELECTOR = 'img, video, audio, canvas, iframe, object, embed';
-
-function singleOrderedListItemCopy(
-  selection: Selection,
-): { text: string; html: string } | null {
-  if (selection.rangeCount !== 1 || selection.isCollapsed) return null;
-  const range = selection.getRangeAt(0);
-  const startNode = range.startContainer;
-  const startElement =
-    startNode.nodeType === Node.ELEMENT_NODE ? (startNode as Element) : startNode.parentElement;
-  const item = startElement?.closest('li');
-  // Nested lists carry their own markers; leave those selections to the native copy path.
-  if (!item || item.parentElement?.tagName !== 'OL' || item.querySelector('li')) return null;
-  if (!item.contains(range.endContainer)) return null;
-  const fragment = range.cloneContents();
-  // Keep Chromium's own flavors for non-text selections (e.g. a copied image).
-  if (fragment.querySelector(CLIPBOARD_MEDIA_SELECTOR)) return null;
-  const text = selection.toString();
-  if (!text.trim()) return null;
-  const holder = document.createElement('div');
-  holder.appendChild(fragment);
-  return { text, html: holder.innerHTML };
-}
-
 const MarkdownRendererBase = memo(function MarkdownRendererBase({
   workingDir,
   content,
@@ -2032,17 +2008,8 @@ const MarkdownRendererBase = memo(function MarkdownRendererBase({
     ],
   );
 
-  const handleCopy = useCallback((event: ReactClipboardEvent<HTMLDivElement>) => {
-    const selection = window.getSelection();
-    const picked = selection ? singleOrderedListItemCopy(selection) : null;
-    if (!picked) return;
-    event.clipboardData?.setData('text/plain', picked.text);
-    event.clipboardData?.setData('text/html', picked.html);
-    event.preventDefault();
-  }, []);
-
   return (
-    <div className="msg-markdown select-text" onCopy={handleCopy}>
+    <div className="msg-markdown select-text">
       {isStreaming ? (
         streamingChunks.map((chunk) => (
           <StreamingMarkdownChunk
