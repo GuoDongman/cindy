@@ -344,14 +344,19 @@ export function buildRouteDecision(...args: Parameters<typeof buildRouteDecision
   const selected = args[0].modelInterface;
   if (!decision || !selected || decision.localHandler) return decision;
   return { ...decision, compatibilityProfiles: selected.compatibility,
-    transformRequestBody: (body) => {
-      let parsed: unknown;
-      try { parsed = JSON.parse(body.toString('utf8')); } catch { return { body }; }
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { body };
-      const object = parsed as Record<string, unknown>;
-      if (typeof object.model === 'string') object.model = selected.wireModelId;
-      return { body: Buffer.from(JSON.stringify(parsed)) };
-    },
+    transformRequestBody: rewriteRequestBodyModel(selected.wireModelId),
+  };
+}
+
+/** Replace a JSON request body's `model` just before forwarding; non-JSON bodies pass through unchanged. */
+export function rewriteRequestBodyModel(model: string): NonNullable<RoutingDecision['transformRequestBody']> {
+  return (body) => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(body.toString('utf8')); } catch { return { body }; }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { body };
+    const object = parsed as Record<string, unknown>;
+    if (typeof object.model === 'string') object.model = model;
+    return { body: Buffer.from(JSON.stringify(parsed)) };
   };
 }
 

@@ -49,7 +49,7 @@ import { buildVisionBridgeProxyTransform } from '../vision-bridge/vision-bridge-
 
 import { CLAUDE_PROVIDER_AUTH_PLACEHOLDER_KEY, anthropicCatalogModelIds, isAnthropicWireModel } from './claude-gateway-config.js';
 import { getActiveCatalog } from './active-catalog.js';
-import { providerModelRecord, modelWithInterface } from '@cindy/model-providers';
+import { providerModelRecord, modelWithInterface, type Provider } from '@cindy/model-providers';
 import { outboundFetch } from './outbound-fetch.js';
 import { invocationModelRecord, requiresNativeProviderAuth } from './pi-provider-transport.js';
 import { createClaudeProviderBridge } from './claude-provider-bridge.js';
@@ -105,6 +105,7 @@ import {
   resolvePendingSessionRouteDecision,
   resolveProviderRouteDecision,
   resolveSessionRouteDecision,
+  rewriteRequestBodyModel,
 } from './provider-route.js';
 import { createProviderUpstreamErrorObserver } from './provider-upstream-error-observer.js';
 import { createClaudeAutoClassifierFailureObserver } from './claude-auto-permission-fallback.js';
@@ -189,7 +190,23 @@ function attachClaudeProviderBridge(route: RoutingDecision, providerId: string, 
         fast: sessionId ? getSessionFastMode(sessionId) : false },
     }) };
   }
-  return route;
+  // A model-interface route already pins its own wire model; only plain custom routes need restoring.
+  const configured = provider?.source === 'user' && !route.transformRequestBody
+    ? configuredCustomModelId(provider, wireModel) : null;
+  return configured ? { ...route, transformRequestBody: rewriteRequestBodyModel(configured) } : route;
+}
+
+/**
+ * Claude Code appends `[1m]` to select its 1M window; that alias is not part of the custom
+ * upstream's model list. Restore the ID the user configured (#7792); IDs configured with `[1m]`
+ * and models the Provider does not list are forwarded unchanged.
+ */
+function configuredCustomModelId(provider: Provider, wireModel: string): string | null {
+  if (!wireModel.endsWith('[1m]')) return null;
+  const ids = provider.models['claude-code']?.map(model => model.id) ?? [];
+  if (ids.includes(wireModel)) return null;
+  const bare = wireModel.slice(0, -'[1m]'.length);
+  return ids.includes(bare) ? bare : null;
 }
 
 export function setClaudeProxyGatewayKeyReader(fn: () => string | null): void {

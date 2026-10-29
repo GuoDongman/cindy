@@ -131,6 +131,26 @@ describe('cc routingTransform — ①.5 隐式来源路由 (智谱 glm-5.3 裸 i
     return Promise.resolve(decision).then(route => expect(route?.localHandler).toBeTypeOf('function'));
   });
 
+  // #7792: Claude Code adds `[1m]` for 1M catalog windows; a custom Anthropic upstream must still
+  // receive the Model ID exactly as the user configured it, or bare-ID gateways reject the request.
+  it.each([
+    { configured: 'claude-opus-5-5', sent: 'claude-opus-5-5[1m]', upstream: 'claude-opus-5-5' },
+    { configured: 'claude-opus-5-5[1m]', sent: 'claude-opus-5-5[1m]', upstream: 'claude-opus-5-5[1m]' },
+    { configured: 'claude-opus-5-5', sent: 'claude-haiku-5-5', upstream: 'claude-haiku-5-5' },
+  ])('forwards $sent to a custom Anthropic upstream configured as $configured as $upstream', async ({ configured, sent, upstream }) => {
+    setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
+      'claude-code': { baseUrl: ZHIPU_UPSTREAM, wireProtocol: 'anthropic-messages', models: [{ id: configured, name: 'Opus' }] },
+    } })]);
+    setClaudeProxySessionIdResolver(() => 'sess-race');
+    setSessionProvider('sess-race', 'zhipu-plan');
+    const body = { model: sent, max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] };
+    const route = await transform(body, ctxWith({ 'x-claude-code-session-id': 'sdk-race' }));
+    expect(route?.upstreamOverride).toBe(ZHIPU_UPSTREAM);
+    const raw = Buffer.from(JSON.stringify(body));
+    const forwarded = route?.transformRequestBody ? (await route.transformRequestBody(raw, ctxWith({}))).body : raw;
+    expect(JSON.parse(forwarded.toString('utf8'))).toEqual({ ...body, model: upstream });
+  });
+
   it.each(['github-copilot', 'cloudflare-ai-gateway'])('keeps %s native authentication for Claude Messages routes', async sourceId => {
     const row = PROVIDER_MODEL_CATALOG.providers[sourceId].find(row => row.execution.pi.api === 'anthropic-messages')!;
     const baseUrl = row.upstream.replace('{CLOUDFLARE_ACCOUNT_ID}', 'fixture-account').replace('{CLOUDFLARE_GATEWAY_ID}', 'fixture-gateway');
