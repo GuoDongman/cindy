@@ -151,6 +151,35 @@ describe('cc routingTransform — ①.5 隐式来源路由 (智谱 glm-5.3 裸 i
     expect(JSON.parse(forwarded.toString('utf8'))).toEqual({ ...body, model: upstream });
   });
 
+  // A model with its own route must still be found when Claude Code sends `[1m]`.
+  it('routes a 1M request for a model with its own endpoint to that endpoint, with the bare ID', async () => {
+    const MODEL_UPSTREAM = 'https://model-endpoint.example/v1/messages';
+    setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
+      'claude-code': { baseUrl: ZHIPU_UPSTREAM, wireProtocol: 'anthropic-messages', models: [
+        { id: 'claude-opus-5-5', name: 'Opus', route: { baseUrl: MODEL_UPSTREAM, wireProtocol: 'anthropic-messages' } },
+      ] },
+    } })]);
+    setClaudeProxySessionIdResolver(() => 'sess-race');
+    setSessionProvider('sess-race', 'zhipu-plan');
+    const body = { model: 'claude-opus-5-5[1m]', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] };
+    const route = await transform(body, ctxWith({ 'x-claude-code-session-id': 'sdk-race' }));
+    expect(route?.upstreamOverride).toBe(MODEL_UPSTREAM);
+    const forwarded = await route!.transformRequestBody!(Buffer.from(JSON.stringify(body)), ctxWith({}));
+    expect(JSON.parse(forwarded.body.toString('utf8'))).toEqual({ ...body, model: 'claude-opus-5-5' });
+  });
+
+  it('bridges a 1M request for an OpenAI-protocol model to the Claude translation handler', async () => {
+    setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
+      'claude-code': { baseUrl: ZHIPU_UPSTREAM, wireProtocol: 'anthropic-messages', models: [
+        { id: 'claude-opus-5-5', name: 'Opus', route: { baseUrl: 'https://chat.example/v1', wireProtocol: 'openai-chat' } },
+      ] },
+    } })]);
+    setClaudeProxySessionIdResolver(() => 'sess-race');
+    setSessionProvider('sess-race', 'zhipu-plan');
+    const route = await transform({ model: 'claude-opus-5-5[1m]' }, ctxWith({ 'x-claude-code-session-id': 'sdk-race' }));
+    expect(route?.localHandler).toBeTypeOf('function');
+  });
+
   it.each(['github-copilot', 'cloudflare-ai-gateway'])('keeps %s native authentication for Claude Messages routes', async sourceId => {
     const row = PROVIDER_MODEL_CATALOG.providers[sourceId].find(row => row.execution.pi.api === 'anthropic-messages')!;
     const baseUrl = row.upstream.replace('{CLOUDFLARE_ACCOUNT_ID}', 'fixture-account').replace('{CLOUDFLARE_GATEWAY_ID}', 'fixture-gateway');

@@ -156,8 +156,9 @@ let _readGatewayKey: () => string | null = () => null;
 function attachClaudeProviderBridge(route: RoutingDecision, providerId: string, wireModel: string, sessionId?: string): RoutingDecision {
   if (route.localHandler) return route;
   const provider = getActiveCatalog().providers.find(p => p.id === providerId);
-  const catalogModel = provider?.models['claude-code']?.find(m => m.id === wireModel);
-  const routing = provider ? (sessionId ? sessionProviderRoutingForModel(sessionId, provider, 'claude-code', wireModel) : providerRoutingForModel(provider, 'claude-code', wireModel)) : null;
+  const lookupModel = routeLookupModelId(provider, wireModel);
+  const catalogModel = provider?.models['claude-code']?.find(m => m.id === lookupModel);
+  const routing = provider ? (sessionId ? sessionProviderRoutingForModel(sessionId, provider, 'claude-code', lookupModel) : providerRoutingForModel(provider, 'claude-code', lookupModel)) : null;
   const model = catalogModel && modelWithInterface(catalogModel, routing?.modelInterface);
   // Adapter identity belongs to the declared route. An OAuth account can select
   // another host without becoming a different provider (e.g. Copilot Business).
@@ -207,6 +208,14 @@ function configuredCustomModelId(provider: Provider, wireModel: string): string 
   if (ids.includes(wireModel)) return null;
   const bare = wireModel.slice(0, -'[1m]'.length);
   return ids.includes(bare) ? bare : null;
+}
+
+/**
+ * The model ID route lookups use. For a user-added Provider, the configured bare ID is the key of
+ * its per-model route, so a 1M request still reaches that model's own endpoint and protocol.
+ */
+function routeLookupModelId(provider: Provider | undefined, wireModel: string): string {
+  return provider?.source === 'user' ? configuredCustomModelId(provider, wireModel) ?? wireModel : wireModel;
 }
 
 export function setClaudeProxyGatewayKeyReader(fn: () => string | null): void {
@@ -917,7 +926,8 @@ export function createModelRoutingTransform(): RoutingTransform {
       // wireModel 传给 scope 门:cc 内部辅助调用(权限 auto 分类器等 claude-* 小模型请求)
       // 不在订阅直连供应商(xai / openai-cc)声明的 modelPrefixes 范围内 → 返回 null,
       // 落到下方 ② 段 spawn 默认路由,分类器照常走网关/直连(issue #886)。
-      const perSession = resolveSessionRouteDecision(sessionId, requestAgent, gatewayKey, wireModel);
+      const routeModel = routeLookupModelId(getActiveCatalog().providers.find(p => p.id === selectedProviderId), wireModel);
+      const perSession = resolveSessionRouteDecision(sessionId, requestAgent, gatewayKey, routeModel);
       const recordSelectedRoute = (route: RoutingDecision | null): RoutingDecision | null => {
         if (route) {
           const denied = authorizeClaudeRoute(selectedProviderId);
