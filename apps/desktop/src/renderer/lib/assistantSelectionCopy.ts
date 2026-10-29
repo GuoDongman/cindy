@@ -27,6 +27,8 @@ function selectionWithoutListWrapper(
   // React portals bubble copy events here too (e.g. a Markdown preview opened from a reply).
   if (!container.contains(item)) return null;
   const fragment = range.cloneContents();
+  // Link context-menu anchors are zero-size fixed spans, not content; TextEdit breaks the line on them.
+  fragment.querySelectorAll('[data-fixed-menu-anchor]').forEach((el) => el.remove());
   // Keep Chromium's own flavors for non-text selections (e.g. a copied image).
   if (fragment.querySelector(MEDIA_SELECTOR)) return null;
   const text = selection.toString();

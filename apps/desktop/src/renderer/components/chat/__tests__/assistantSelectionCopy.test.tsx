@@ -119,6 +119,35 @@ describe('assistant reply copy', () => {
     }
   });
 
+  it('drops the zero-size link menu anchor inside the copied item (TextEdit line break)', () => {
+    // DOM as copied from a real reply: each link renders a fixed, zero-size menu anchor beside it.
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-markdown';
+    wrapper.innerHTML =
+      '<ol><li>item with a <a href="https://example.com">link</a>' +
+      '<span aria-hidden="true" data-fixed-menu-anchor style="position: fixed; width: 0px; height: 0px;"></span>' +
+      ', <strong>bold</strong></li></ol>';
+    document.body.appendChild(wrapper);
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(wrapper.querySelector('li')!);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      const setData = vi.fn();
+      handleAssistantCopy({
+        currentTarget: wrapper,
+        clipboardData: { setData },
+        preventDefault: vi.fn(),
+      } as unknown as ClipboardEvent<HTMLElement>);
+      const html = setData.mock.calls.find(([type]) => type === 'text/html')![1] as string;
+      expect(html).not.toContain('data-fixed-menu-anchor');
+      expect(html).toContain('<a href="https://example.com">link</a>, <strong>bold</strong>');
+    } finally {
+      wrapper.remove();
+      window.getSelection()!.removeAllRanges();
+    }
+  });
+
   it('leaves the same selection outside an assistant reply to native copy', () => {
     const { prevented, setData } = copy(renderPlain, wholeItem2);
     expect(prevented).toBe(false);
