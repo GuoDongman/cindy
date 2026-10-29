@@ -13,6 +13,8 @@ vi.mock('react-i18next', async (importOriginal) => ({
 }));
 afterEach(cleanup);
 
+import type { ClipboardEvent } from 'react';
+import { handleAssistantCopy } from '@/lib/assistantSelectionCopy';
 import { AssistantMessage } from '../AssistantMessage';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 
@@ -20,8 +22,8 @@ import { MarkdownRenderer } from '../MarkdownRenderer';
 // the rendered reply reach it. Issue #7416: copying one list item put the <ol><li> wrapper into
 // text/html, so Slack/TextEdit rebuilt an unselected number. PR #7785 review: link-only selections
 // lost the <a>, and the rewrite must not run for other MarkdownRenderer callers.
-// Unit/DOM tier. jsdom's Selection.toString() is textContent-like (unlike Chromium), so hard-break
-// plain text stays a manual check.
+// Unit/DOM tier. jsdom's Selection.toString() is textContent-like (unlike Chromium),
+// so hard-break plain text stays a manual check.
 const LIST = '1. alpha\n2. beta [link](https://example.com)\n3. gamma';
 
 type Pick = (root: HTMLElement) => [Node, number, Node, number];
@@ -88,6 +90,33 @@ describe('assistant reply copy', () => {
     ]);
     expect(prevented).toBe(false);
     expect(setData).not.toHaveBeenCalled();
+  });
+
+  it('leaves a selection outside the reply DOM (portal preview) to native copy', () => {
+    const root = renderAssistant(LIST);
+    const [startNode, startOffset, endNode, endOffset] = wholeItem2(root);
+    const range = document.createRange();
+    range.setStart(startNode, startOffset);
+    range.setEnd(endNode, endOffset);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const setData = vi.fn();
+    const preventDefault = vi.fn();
+    // A React portal event: currentTarget is the wrapper, but the selected DOM lives elsewhere.
+    const portalHost = document.createElement('div');
+    document.body.appendChild(portalHost);
+    try {
+      handleAssistantCopy({
+        currentTarget: portalHost,
+        clipboardData: { setData },
+        preventDefault,
+      } as unknown as ClipboardEvent<HTMLElement>);
+      expect(setData).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    } finally {
+      portalHost.remove();
+      window.getSelection()!.removeAllRanges();
+    }
   });
 
   it('leaves the same selection outside an assistant reply to native copy', () => {
