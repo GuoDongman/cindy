@@ -589,6 +589,10 @@ describe('collapsed avatar strip mentions', () => {
       collapse();
       const more = screen.getByRole('button', { name: `bots.list.sectionExpand · +3 · ${mentionLabel}` });
       expect(more.querySelector('[data-teammate-mention]')).not.toBeNull();
+      // Mouse users read the same words as the accessible name.
+      fireEvent.pointerEnter(more);
+      fireEvent.pointerMove(more, { pointerType: 'mouse' });
+      expect((await screen.findByRole('tooltip')).textContent).toBe(`bots.list.sectionExpand · +3 · ${mentionLabel}`);
     } finally {
       globalThis.ResizeObserver = original;
     }

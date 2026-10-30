@@ -559,6 +559,10 @@ export function TeammatesSection() {
               shown = [...shown.slice(0, -1), selectedEntry];
             }
             const hidden = entries.filter((item) => !shown.includes(item));
+            const hiddenMentioned = hidden.some(item => item.mentioned);
+            // +N 的悬停提示与读屏名称共用一份文本,收进去的 @ 对鼠标用户同样可读。
+            const moreLabel = [`${t('bots.list.sectionExpand')} · +${hidden.length}`,
+              ...(hiddenMentioned ? [t('bots.groupChat.server.thread.hintMentioned')] : [])].join(' · ');
             return (
               <>
                 {shown.map(({ entry, key, selected, status, mentioned, label }) => (
@@ -584,17 +588,16 @@ export function TeammatesSection() {
                   </Tip>
                 ))}
                 {hidden.length > 0 ? (
-                  <Tip text={t('bots.list.sectionExpand')} side="bottom">
+                  <Tip text={moreLabel} side="bottom">
                     <button
                       type="button"
                       onClick={() => { toggleCollapsed(); setShowAllChats(true); }}
-                      aria-label={[`${t('bots.list.sectionExpand')} · +${hidden.length}`,
-                        ...(hidden.some(item => item.mentioned) ? [t('bots.groupChat.server.thread.hintMentioned')] : [])].join(' · ')}
+                      aria-label={moreLabel}
                       className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--surface-chip)] px-1.5 text-11 font-medium tabular-nums text-[var(--sidebar-nav-text)] outline-none hover:bg-sidebar-item-hover focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       +{hidden.length}
                       <TeammateStatusDot status={aggregateTeammateStatus(hidden.map(item => item.status))}
-                        mentioned={hidden.some(item => item.mentioned)} />
+                        mentioned={hiddenMentioned} />
                     </button>
                   </Tip>
                 ) : null}
