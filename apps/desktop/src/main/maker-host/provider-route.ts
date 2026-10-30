@@ -348,7 +348,7 @@ export function buildRouteDecision(...args: Parameters<typeof buildRouteDecision
   };
 }
 
-/** Replace a JSON request body's `model` just before forwarding; non-JSON bodies pass through unchanged. */
+/** Rewrites the JSON body's model right before forwarding; non-JSON bodies pass through. */
 export function rewriteRequestBodyModel(model: string): NonNullable<RoutingDecision['transformRequestBody']> {
   return (body) => {
     let parsed: unknown;

@@ -191,16 +191,16 @@ function attachClaudeProviderBridge(route: RoutingDecision, providerId: string, 
         fast: sessionId ? getSessionFastMode(sessionId) : false },
     }) };
   }
-  // A model-interface route already pins its own wire model; only plain custom routes need restoring.
+  // model-interface routes already pin their wire model; only plain custom routes need restoring
   const configured = provider?.source === 'user' && !route.transformRequestBody
     ? configuredCustomModelId(provider, wireModel) : null;
   return configured ? { ...route, transformRequestBody: rewriteRequestBodyModel(configured) } : route;
 }
 
 /**
- * Claude Code appends `[1m]` to select its 1M window; that alias is not part of the custom
- * upstream's model list. Restore the ID the user configured (#7792); IDs configured with `[1m]`
- * and models the Provider does not list are forwarded unchanged.
+ * cc appends `[1m]` to select the 1M window; custom upstreams don't list that alias, so bare-ID
+ * gateways reject it (#7792). Restore the configured ID; IDs the user configured with `[1m]` and
+ * models the Provider doesn't list pass through.
  */
 function configuredCustomModelId(provider: Provider, wireModel: string): string | null {
   if (!wireModel.endsWith('[1m]')) return null;
@@ -211,8 +211,8 @@ function configuredCustomModelId(provider: Provider, wireModel: string): string 
 }
 
 /**
- * The model ID route lookups use. For a user-added Provider, the configured bare ID is the key of
- * its per-model route, so a 1M request still reaches that model's own endpoint and protocol.
+ * Per-model routes are keyed by the configured ID, so a 1M request still hits that model's own
+ * endpoint/protocol. claude-code only.
  */
 function routeLookupModelId(provider: Provider | undefined, wireModel: string): string {
   return provider?.source === 'user' ? configuredCustomModelId(provider, wireModel) ?? wireModel : wireModel;
@@ -926,7 +926,9 @@ export function createModelRoutingTransform(): RoutingTransform {
       // wireModel 传给 scope 门:cc 内部辅助调用(权限 auto 分类器等 claude-* 小模型请求)
       // 不在订阅直连供应商(xai / openai-cc)声明的 modelPrefixes 范围内 → 返回 null,
       // 落到下方 ② 段 spawn 默认路由,分类器照常走网关/直连(issue #886)。
-      const routeModel = routeLookupModelId(getActiveCatalog().providers.find(p => p.id === selectedProviderId), wireModel);
+      const routeModel = requestAgent === 'claude-code'
+        ? routeLookupModelId(getActiveCatalog().providers.find(p => p.id === selectedProviderId), wireModel)
+        : wireModel;
       const perSession = resolveSessionRouteDecision(sessionId, requestAgent, gatewayKey, routeModel);
       const recordSelectedRoute = (route: RoutingDecision | null): RoutingDecision | null => {
         if (route) {

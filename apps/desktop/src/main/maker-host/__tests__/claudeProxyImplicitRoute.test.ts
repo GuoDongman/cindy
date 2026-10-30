@@ -67,6 +67,7 @@ import { getActiveCatalog, setCustomProviders } from '../active-catalog';
 import * as providerRoute from '../provider-route';
 import { buildRegistry, buildUserProvider, providerPresetOAuth, PROVIDER_MODEL_CATALOG } from '@cindy/model-providers';
 import { clearSessionProvider, setSessionProvider } from '../session-provider-store';
+import { registerPiProxySession } from '../pi-proxy-session-auth';
 import {
   readClaudeSessionRoute,
   resetClaudeSessionRouteRegistryForTest,
@@ -131,8 +132,7 @@ describe('cc routingTransform — ①.5 隐式来源路由 (智谱 glm-5.3 裸 i
     return Promise.resolve(decision).then(route => expect(route?.localHandler).toBeTypeOf('function'));
   });
 
-  // #7792: Claude Code adds `[1m]` for 1M catalog windows; a custom Anthropic upstream must still
-  // receive the Model ID exactly as the user configured it, or bare-ID gateways reject the request.
+  // #7792: cc appends [1m] for 1M windows; a custom upstream must still get the configured ID
   it.each([
     { configured: 'claude-opus-5-5', sent: 'claude-opus-5-5[1m]', upstream: 'claude-opus-5-5' },
     { configured: 'claude-opus-5-5[1m]', sent: 'claude-opus-5-5[1m]', upstream: 'claude-opus-5-5[1m]' },
@@ -151,7 +151,7 @@ describe('cc routingTransform — ①.5 隐式来源路由 (智谱 glm-5.3 裸 i
     expect(JSON.parse(forwarded.toString('utf8'))).toEqual({ ...body, model: upstream });
   });
 
-  // A model with its own route must still be found when Claude Code sends `[1m]`.
+  // a model with its own route is still found when cc sends [1m]
   it('routes a 1M request for a model with its own endpoint to that endpoint, with the bare ID', async () => {
     const MODEL_UPSTREAM = 'https://model-endpoint.example/v1/messages';
     setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
@@ -178,6 +178,30 @@ describe('cc routingTransform — ①.5 隐式来源路由 (智谱 glm-5.3 裸 i
     setSessionProvider('sess-race', 'zhipu-plan');
     const route = await transform({ model: 'claude-opus-5-5[1m]' }, ctxWith({ 'x-claude-code-session-id': 'sdk-race' }));
     expect(route?.localHandler).toBeTypeOf('function');
+  });
+
+  // Pi routes by the literal model ID; no claude-code [1m] aliasing
+  it('keeps the literal model ID when routing a Pi request', async () => {
+    const PI_MODEL_UPSTREAM = 'https://pi-model.example/v1';
+    setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
+      'claude-code': { baseUrl: ZHIPU_UPSTREAM, wireProtocol: 'anthropic-messages', models: [{ id: 'foo', name: 'Foo' }] },
+      pi: { baseUrl: 'https://pi-provider.example/v1', wireProtocol: 'openai-chat', models: [
+        { id: 'foo[1m]', name: 'Foo', route: { baseUrl: PI_MODEL_UPSTREAM, wireProtocol: 'anthropic-messages' } },
+      ] },
+    } })]);
+    setSessionProvider('pi-sess', 'zhipu-plan');
+    const dispose = registerPiProxySession('pi-sess', 'pi-secret', () => 'zhipu-plan');
+    try {
+      const route = await transform({ model: 'foo[1m]' }, ctxWith({
+        'x-cindy-pi-session-id': 'pi-sess',
+        'x-cindy-pi-session-token': 'pi-secret',
+        'x-cindy-pi-provider-id': 'zhipu-plan',
+      }));
+      expect(route?.upstreamOverride).toBe(PI_MODEL_UPSTREAM);
+    } finally {
+      dispose();
+      clearSessionProvider('pi-sess');
+    }
   });
 
   it.each(['github-copilot', 'cloudflare-ai-gateway'])('keeps %s native authentication for Claude Messages routes', async sourceId => {
