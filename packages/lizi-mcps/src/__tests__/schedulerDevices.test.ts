@@ -678,6 +678,12 @@ describe('remote schedule create and move', () => {
           agentKind: 'pi',
           model: 'grok-4.6',
           providerId: 'xai-2fdb5bc7',
+          recurring: true,
+          manual: false,
+          useWorktree: false,
+          workspaceKind: 'dialogue',
+          persistentSession: false,
+          silentWhenIdle: false,
           status: 'active',
         };
         s.remoteRows.set('dst', row);
@@ -688,6 +694,30 @@ describe('remote schedule create and move', () => {
     expect(result).toMatchObject({ ok: true, targetId: 'dst' });
     expect(s.invoke.mock.calls.filter((call) => call[1] === 'create')).toHaveLength(1);
     expect(s.scheduler.pause).toHaveBeenCalledWith('src');
+  });
+
+  it('does not pause the target when a lost source receipt already paused the source', async () => {
+    const s = setup();
+    let sourceReads = 0;
+    s.invoke.mockImplementation(async (_deviceId: string, op: string, args: unknown[]) => {
+      if (op === 'list') return { ok: true, data: [...s.remoteRows.values()] };
+      if (op === 'get' && args[0] === 'src') {
+        sourceReads += 1;
+        return { ok: true, data: { ...source, status: sourceReads > 1 ? 'paused' : 'active' } };
+      }
+      if (op === 'get') return { ok: true, data: s.remoteRows.get(String(args[0])) ?? null };
+      if (op === 'create') {
+        const row = { ...(args[0] as object), id: 'dst', status: 'active' };
+        s.remoteRows.set('dst', row);
+        return { ok: true, data: row };
+      }
+      if (op === 'pause' && args[0] === 'src') return { ok: false, code: 'REMOTE_RESULT_UNKNOWN', message: 'unknown' };
+      if (op === 'pause') return { ok: true, data: null };
+      return { ok: false, code: 'REMOTE_UNSUPPORTED', message: op };
+    });
+    const result = parse(await s.registry.call('schedule_move', { id: 'src', sourceDevice: 'mac', targetDevice: 'spark' }));
+    expect(result.ok).toBe(true);
+    expect(s.invoke.mock.calls.some((call) => call[1] === 'pause' && call[2][0] === 'dst')).toBe(false);
   });
 
   it('pauses the target copy if stopping the source fails', async () => {

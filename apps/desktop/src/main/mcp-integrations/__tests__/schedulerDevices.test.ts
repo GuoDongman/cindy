@@ -157,7 +157,7 @@ describe('desktop scheduler cross-device transport', () => {
       error: { code: 'IPC_ERROR' as const, message: '[NOT_FOUND] Session does not exist' },
     };
     for (const outcome of [lost, postHandler]) {
-      for (const op of ['create', 'update', 'pause', 'resume', 'delete', 'run-now'] as const) {
+      for (const op of ['update', 'pause', 'resume', 'delete', 'run-now'] as const) {
         const s = setup(
           vi.fn<Invoke>(async () => {
             if (outcome instanceof Error) throw outcome;
@@ -241,6 +241,24 @@ describe('desktop scheduler cross-device transport', () => {
       'utf8',
     );
     expect(schedule).toContain('`scheduler not ready: ${');
+  });
+
+  it('refuses remote create on a peer that cannot check workingDir', async () => {
+    const s = setup(vi.fn<Invoke>(async () => ({ ok: true, result: {} })));
+    const result = await s.remote.invoke('mac', 'create', [{ name: 'radar', workingDir: '/missing' }]);
+    expect(result).toMatchObject({ ok: false, code: 'REMOTE_UNSUPPORTED' });
+    expect(s.invoke).toHaveBeenCalledTimes(1);
+    expect(s.invoke.mock.calls[0].slice(0, 2)).toEqual(['mac', 'maker:get-capabilities']);
+  });
+
+  it('creates remotely only after the directory-check capability is present', async () => {
+    const s = setup();
+    s.invoke
+      .mockResolvedValueOnce({ ok: true, result: { supportsRemoteScheduleDirectoryCheck: true } })
+      .mockResolvedValueOnce({ ok: true, result: { id: 'created' } });
+    const result = await s.remote.invoke('mac', 'create', [{ name: 'radar' }]);
+    expect(result).toMatchObject({ ok: true, data: { id: 'created' } });
+    expect(s.invoke.mock.calls[1].slice(0, 2)).toEqual(['mac', 'maker:schedule:create']);
   });
 
   it('rejects a malformed list and never sends after the account changes', async () => {

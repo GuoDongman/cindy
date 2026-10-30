@@ -102,6 +102,14 @@ export function createSchedulerRemoteDeps(deps: {
       }
       let response: InvokeResultPayload;
       try {
+        if (op === 'create') {
+          const capabilities = await deps.invoke(deviceId, 'maker:get-capabilities', ['claude-code'], { preSend: assertCurrent });
+          assertCurrent();
+          const supported = capabilities.ok ? capabilities.result as { supportsRemoteScheduleDirectoryCheck?: boolean } | null : null;
+          if (supported?.supportsRemoteScheduleDirectoryCheck !== true) {
+            return { ok: false, code: 'REMOTE_UNSUPPORTED', message: '目标电脑的版本不支持远程创建定时任务，请先更新目标电脑' };
+          }
+        }
         const patch = op === 'update' ? args[1] as Record<string, unknown> | undefined : undefined;
         const needsModelSelection = patch?.modelAgentKind != null;
         const needsLocationSelection = patch && (Object.prototype.hasOwnProperty.call(patch, 'modelAgentDeviceId')

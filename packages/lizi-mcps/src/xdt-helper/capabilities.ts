@@ -206,7 +206,7 @@ export const CAPABILITIES: readonly CapabilityEntry[] = [
       '可按 cron / 间隔重复运行,或在指定时间运行一次;常见用法是每天定时跑 AI 工单分拣或周报生成。运行以普通任务的形式进行,可从运行记录打开对应任务。',
       'GUI 入口是主界面侧边栏「自动化」,展示定时任务列表、运行记录、失败原因,可暂停 / 恢复 / 编辑 / 删除。只在所在电脑的桌面端运行着时触发(不是云端 cron)。',
       'agent 也能通过 cindy_scheduler 工具(schedule_create / schedule_move / list / get / update / pause / resume / run_now / delete / list_runs,以及 schedule_list_models 查可选运行位置与模型、schedule_set_pre_run_hook 安装运行前检查脚本)自助创建和管理,GUI 与工具看到同一份数据。schedule_create 传 device 可把闹钟建在另一台电脑上；schedule_move 在目标 schedule_get 确认 active 后才停源任务。',
-      '定时任务保存在各自的电脑上,工具默认只作用于本机:schedule_list / get / list_runs 传 device="all" 或某台电脑的 deviceId 可查其它在线且已开启远程控制的电脑(结果按电脑分组,没查到的电脑写明原因),update / pause / resume / delete / run_now 传 device=<deviceId> 可管理那台电脑上的任务;新建只在本机。',
+      '定时任务保存在各自的电脑上,工具默认只作用于本机:schedule_list / get / list_runs 传 device="all" 或某台电脑的 deviceId 可查其它在线且已开启远程控制的电脑(结果按电脑分组,没查到的电脑写明原因),update / pause / resume / delete / run_now / schedule_create / schedule_move 传 device 或 sourceDevice/targetDevice 可管理那台电脑上的任务。对方版本不支持远程创建时返回 REMOTE_UNSUPPORTED。',
       '后端 SQLite 存储,有独立 Scheduler Host 进程管理生命周期。',
     ].join(' '),
   },

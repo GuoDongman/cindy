@@ -244,8 +244,10 @@ export function createDesktopTaskActionAuthorizer(deps: {
           ? { workingDir: typeof args.workingDir === 'string' ? args.workingDir : undefined } : undefined;
         const scheduleIdArg = hookInstallation ? args.scheduleId : args.id;
         const scheduleDevice = call.server === 'cindy_scheduler' && typeof args.device === 'string' ? args.device : undefined;
-        // A verified owner relay is principal 'owner'. Cross-computer handoff alone is not.
-        if (remoteSchedulePlacement(call) && principal !== 'owner') {
+        // Verified owner relays set ownerContinuation even when this is not a teammate
+        // turn, so principal stays unset. Cross-computer handoff alone is not consent.
+        const ownerTurn = principal === 'owner' || input.ownerInput || input.ownerContinuation === true;
+        if (remoteSchedulePlacement(call) && !ownerTurn) {
           rejectedDecision = REMOTE_SCHEDULE_OWNER_REQUIRED;
           return null;
         }

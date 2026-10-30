@@ -7,7 +7,7 @@ import { remoteCreateWorkingDirError } from '../remoteScheduleWorkingDir.js';
 describe('remote schedule workingDir', () => {
   it('accepts an omitted path and rejects a missing or non-directory path', async () => {
     expect(await remoteCreateWorkingDirError(undefined)).toBeNull();
-    expect(await remoteCreateWorkingDirError('   ')).toBeNull();
+    expect(await remoteCreateWorkingDirError('   ')).toContain('whitespace');
     const missing = await remoteCreateWorkingDirError('/tmp/cindy-missing-schedule-dir');
     expect(missing).toContain('does not exist');
     const root = await mkdtemp(path.join(tmpdir(), 'cindy-sched-'));

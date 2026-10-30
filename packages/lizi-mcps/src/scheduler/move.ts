@@ -6,6 +6,8 @@
  * An untrustworthy create receipt is queried first; this call never creates twice.
  */
 
+import { stat } from 'node:fs/promises';
+
 import { z } from 'zod';
 
 import type { CreateScheduleInput, Schedule } from '@cindy/maker-scheduler';
@@ -101,20 +103,40 @@ async function writeOn(
   return deps.remote.invoke(device!, op, args);
 }
 
-function fingerprint(input: Pick<CreateScheduleInput, 'name' | 'prompt' | 'cronExpr' | 'timezone' | 'agentKind' | 'model' | 'providerId'>): string {
-  return JSON.stringify({
-    name: input.name,
-    prompt: input.prompt,
-    cronExpr: input.cronExpr,
-    timezone: input.timezone,
-    agentKind: input.agentKind,
-    model: input.model ?? null,
-    providerId: input.providerId ?? null,
-  });
+function same(left: unknown, right: unknown): boolean {
+  return (left ?? null) === (right ?? null);
 }
 
 function matches(row: Schedule, input: CreateScheduleInput): boolean {
-  return fingerprint(row) === fingerprint(input);
+  if (row.targetSessionId || row.preRunHook || row.scriptConfig || row.agentDeviceId) return false;
+  if ((row.executionMode ?? 'agent') !== 'agent') return false;
+  return row.name === input.name
+    && row.prompt === input.prompt
+    && row.cronExpr === input.cronExpr
+    && row.timezone === input.timezone
+    && row.agentKind === input.agentKind
+    && same(row.model, input.model)
+    && same(row.providerId, input.providerId)
+    && same(row.modelAgentKind, input.modelAgentKind)
+    && same(row.intervalMs, input.intervalMs)
+    && row.recurring === input.recurring
+    && row.manual === (input.manual ?? false)
+    && same(row.workingDir, input.workingDir)
+    && row.useWorktree === input.useWorktree
+    && (row.workspaceKind ?? 'dialogue') === (input.workspaceKind ?? 'dialogue')
+    && (row.persistentSession ?? false) === (input.persistentSession ?? false)
+    && (row.silentWhenIdle ?? false) === (input.silentWhenIdle ?? false);
+}
+
+async function existingDirectoryError(dir: string): Promise<string | null> {
+  if (dir !== dir.trim()) return 'invalid workingDir: path has leading or trailing whitespace';
+  try {
+    const info = await stat(dir);
+    if (!info.isDirectory()) return 'invalid workingDir: not a directory on this computer: ' + dir;
+    return null;
+  } catch {
+    return 'invalid workingDir: does not exist on this computer: ' + dir;
+  }
 }
 
 async function resolveModel(
@@ -127,12 +149,13 @@ async function resolveModel(
   if (!deps.listModels) {
     return { error: '无法读取目标电脑的模型目录，拒绝复制可能无效的 model/providerId' };
   }
+  const engine = source.modelAgentKind ?? source.agentKind;
   const listed = await deps.listModels({
-    agent: source.agentKind,
+    agent: engine,
     agentDeviceId: targetDevice,
   });
   if (!listed.ok) return { error: listed.message || '无法读取目标电脑的模型目录' };
-  const key = source.agentKind === 'claude-code' ? 'claude_code' : source.agentKind;
+  const key = engine === 'claude-code' ? 'claude_code' : engine;
   const models = listed[key] ?? [];
   const match = models.find((item) => item.id === source.model);
   if (!match) return { error: '目标电脑没有模型 ' + source.model + '，没有创建副本' };
@@ -161,6 +184,7 @@ function buildInput(
     manual: source.manual,
     ...(source.intervalMs !== undefined ? { intervalMs: source.intervalMs } : {}),
     agentKind: source.agentKind,
+    ...(source.modelAgentKind ? { modelAgentKind: source.modelAgentKind } : {}),
     ...(model.model ? { model: model.model } : {}),
     ...(model.providerId ? { providerId: model.providerId } : {}),
     ...(source.effort ? { effort: source.effort } : {}),
@@ -216,6 +240,10 @@ export async function moveSchedule(deps: SchedulerMcpDeps, args: MoveArgs): Prom
   if (!source.data) return failure('NOT_FOUND', 'Schedule not found: ' + args.id);
   if (source.data.executionMode === 'script') {
     return failure('INVALID_PARAMS', 'invalid request: script 模式的命令路径只在源电脑有效，不能直接迁移');
+  }
+  if (args.targetWorkingDir && isLocalDevice(targetDevice)) {
+    const dirError = await existingDirectoryError(args.targetWorkingDir);
+    if (dirError) return failure('INVALID_PARAMS', dirError, { sourceUntouched: true });
   }
   const model = await resolveModel(deps, targetDevice, source.data);
   if ('error' in model) return failure('INVALID_PARAMS', model.error);
@@ -273,9 +301,13 @@ export async function moveSchedule(deps: SchedulerMcpDeps, args: MoveArgs): Prom
 
   const verified = await readOne(deps, targetDevice, createdId);
   if (!verified.ok) {
-    return failure(verified.code, verified.message, {
+    const rolledBack = await writeOn(deps, targetDevice, 'pause', [createdId]);
+    return failure(verified.code, rolledBack.ok
+      ? '目标已创建，但核对失败。已暂停目标副本，源任务未改。'
+      : '目标已创建，核对失败，暂停目标也没有确认。源任务未改。不要再次创建。', {
       sourceUntouched: true,
       targetId: createdId,
+      targetPaused: rolledBack.ok,
       queryBeforeRetry: true,
     });
   }
@@ -296,14 +328,40 @@ export async function moveSchedule(deps: SchedulerMcpDeps, args: MoveArgs): Prom
   const action = args.sourceAction ?? 'pause';
   const stopped = await writeOn(deps, sourceDevice, action, [args.id]);
   if (!stopped.ok) {
+    const unknown = stopped.code === 'REMOTE_RESULT_UNKNOWN' || stopped.code === 'REMOTE_TIMEOUT';
+    if (unknown) {
+      const reread = await readOne(deps, sourceDevice, args.id);
+      const sourceStopped = reread.ok && (action === 'delete' ? !reread.data : reread.data?.status === 'paused');
+      if (sourceStopped) {
+        return buildJsonResult({
+          ok: true,
+          sourceId: args.id,
+          sourceDevice: sourceDevice ?? 'local',
+          targetId: createdId,
+          targetDevice: isLocalDevice(targetDevice) ? 'local' : targetDevice,
+          sourceAction: action,
+          targetStatus: 'active',
+          omitted,
+          sourceStopUnconfirmed: true,
+        });
+      }
+      if (!reread.ok || reread.data?.status !== 'active') {
+        return failure('REMOTE_RESULT_UNKNOWN', '源任务停止回执不可信，回读也不能确认它仍在运行。没有暂停目标。不要再次创建。', {
+          sourceUntouched: false,
+          targetId: createdId,
+          targetPaused: false,
+          queryBeforeRetry: true,
+        });
+      }
+    }
     const rolledBack = await writeOn(deps, targetDevice, 'pause', [createdId]);
     return failure(
       stopped.code,
       rolledBack.ok
-        ? '源任务未能' + (action === 'delete' ? '删除' : '暂停') + '，已把目标副本暂停，避免两条同时 active。'
-        : '源任务未能' + (action === 'delete' ? '删除' : '暂停') + '，目标副本也可能仍是 active。不要再次创建。',
+        ? '源任务仍是 active，已把目标副本暂停，避免两条同时 active。'
+        : '源任务仍是 active，暂停目标也没有确认。不要再次创建。',
       {
-        sourceUntouched: false,
+        sourceUntouched: !unknown,
         targetId: createdId,
         targetPaused: rolledBack.ok,
         queryBeforeRetry: true,
