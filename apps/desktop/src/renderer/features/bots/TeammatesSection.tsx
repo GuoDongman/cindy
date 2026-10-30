@@ -545,7 +545,11 @@ export function TeammatesSection() {
                   : 'deviceId' in entry.bot ? isRemoteBotUnread(entry.bot) : (unreadByBotId[entry.bot.id] ?? 0) > 0;
               const status = entry.kind === 'group' ? groupTeammateStatus(entry.group, bots, islandActivity, unread)
                 : entry.kind === 'cindy' ? cindyStatus : statusForBot(entry.bot);
-              return { entry, key, name, selected, unread, status };
+              // 与展开行的「@」同口径:群(含话题)里有未读且 @ 了本人。
+              const mentioned = entry.kind === 'group' && unread && entry.group.serverUnread?.mentioned === true;
+              const label = [name, ...(status === 'idle' ? [] : [t(`bots.avatarStatus.${status}`)]),
+                ...(mentioned ? [t('bots.groupChat.server.thread.hintMentioned')] : [])].join(' · ');
+              return { entry, key, name, selected, unread, status, mentioned, label };
             });
             const overflow = entries.length > avatarCapacity;
             let shown = overflow ? entries.slice(0, Math.max(0, avatarCapacity - 1)) : entries;
@@ -557,24 +561,25 @@ export function TeammatesSection() {
             const hidden = entries.filter((item) => !shown.includes(item));
             return (
               <>
-                {shown.map(({ entry, key, name, selected, unread, status }) => (
-                  <Tip key={key} text={status === 'idle' ? name : `${name} · ${t(`bots.avatarStatus.${status}`)}`} side="bottom">
+                {shown.map(({ entry, key, selected, status, mentioned, label }) => (
+                  <Tip key={key} text={label} side="bottom">
                     <button
                       type="button"
                       onClick={() => openChat(entry)}
-                      aria-label={status === 'idle' ? name : `${name} · ${t(`bots.avatarStatus.${status}`)}`}
+                      aria-label={label}
                       aria-current={selected ? 'page' : undefined}
                       className={cn(
-                        'relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        selected && 'ring-1 ring-[var(--text-tertiary)] ring-offset-2 ring-offset-sidebar',
+                        'relative isolate flex h-12 w-12 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       )}
                     >
+                      {/* 选中:头像下垫一块与展开选中行同色的 56px 圆角底板;不画贴形线圈,群头像叠放也不被切。 */}
+                      {selected ? <span aria-hidden data-teammate-selected className="absolute -inset-1 -z-10 rounded-[14px] bg-sidebar-item-active" /> : null}
                       {entry.kind === 'group' ? (
                         <BotGroupSidebarAvatar members={entry.group.members} compact />
                       ) : (entry.kind === 'cindy' ? currentCindy?.bot : entry.bot) ? (
                         <BotAvatar bot={(entry.kind === 'cindy' ? currentCindy?.bot : entry.bot)!} size="strip" />
                       ) : null}
-                      <TeammateStatusDot status={status} />
+                      <TeammateStatusDot status={status} mentioned={mentioned} />
                     </button>
                   </Tip>
                 ))}
@@ -583,11 +588,13 @@ export function TeammatesSection() {
                     <button
                       type="button"
                       onClick={() => { toggleCollapsed(); setShowAllChats(true); }}
-                      aria-label={`${t('bots.list.sectionExpand')} · +${hidden.length}`}
+                      aria-label={[`${t('bots.list.sectionExpand')} · +${hidden.length}`,
+                        ...(hidden.some(item => item.mentioned) ? [t('bots.groupChat.server.thread.hintMentioned')] : [])].join(' · ')}
                       className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--surface-chip)] px-1.5 text-11 font-medium tabular-nums text-[var(--sidebar-nav-text)] outline-none hover:bg-sidebar-item-hover focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       +{hidden.length}
-                      <TeammateStatusDot status={aggregateTeammateStatus(hidden.map(item => item.status))} />
+                      <TeammateStatusDot status={aggregateTeammateStatus(hidden.map(item => item.status))}
+                        mentioned={hidden.some(item => item.mentioned)} />
                     </button>
                   </Tip>
                 ) : null}
