@@ -1873,4 +1873,43 @@ describe("virtual mouse handle (手持设备的虚拟鼠标)", () => {
     expect(v.elements.cursor.style.clipPath).toBe("");
     expect(v.elements.cursor.style.background).toBe("");
   });
+
+  it("拖动期间迟到的宿主光标不会把点击位置拉回去", () => {
+    // 宿主光标位图可能比手指事件晚到。手柄模式必须像触控板一样保留本地坐标,
+    // 否则抬手点击会落在被覆盖的旧位置上。
+    const v = setup(true);
+    const r = rectOf(v);
+    const lift = 52 / r.height;
+    // 先让宿主光标位图到位,再模拟它在本轮拖动中迟到。
+    const hostCursor = (x: number, y: number) =>
+      v.send({
+        type: "nativeCursor",
+        epoch: "handle",
+        cursor: {
+          x,
+          y,
+          visible: true,
+          width: 16,
+          height: 16,
+          hotX: 0,
+          hotY: 0,
+          png: "iVBORw0KGgo=",
+        },
+      });
+    hostCursor(0.5, 0.5);
+    act(v, () => v.pointer("pointerdown", 1, 120, 350));
+    hostCursor(0.1, 0.1);
+    act(v, () => v.pointer("pointerup", 1, 120, 350));
+    expect(events(v, "button")[0]).toMatchObject({
+      x: expect.closeTo((120 - r.x) / r.width, 3),
+      y: expect.closeTo((350 - r.y) / r.height - lift, 3),
+    });
+  });
+
+  it("拖到桌面最底边时仍然够得到最后一行", () => {
+    const v = setup();
+    const r = rectOf(v);
+    act(v, () => v.pointer("pointerdown", 1, 200, r.y + r.height));
+    expect(events(v, "move").at(-1)!.y).toBeCloseTo(1, 3);
+  });
 });

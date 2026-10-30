@@ -839,8 +839,10 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
         performance.now() - Math.max(lastLocalMove, nativeTouchpad.endedAt ?? 0) <= 200);
     if (
       !control ||
-      (!nativeOwnsCursor && (!remoteCursor || mode !== "pointer" ||
-        (!pointers.size && performance.now() - lastLocalMove > 200)))
+      (!nativeOwnsCursor &&
+        (!remoteCursor ||
+          (mode !== "pointer" && mode !== "handle") ||
+          (!pointers.size && performance.now() - lastLocalMove > 200)))
     ) {
       cx = value.x;
       cy = value.y;
@@ -1098,9 +1100,18 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
     if (onCursor) {
       handleOffset = { x: cx - finger.x, y: cy - finger.y };
     } else {
-      // 上方放不下时改放手指下方,始终保证光标可见。
+      // 默认浮在手指上方;桌面内或屏幕上放不下时改放下方。
       const lift = HANDLE_LIFT_PX / Math.max(1, r.height);
-      handleOffset = { x: 0, y: finger.y - lift >= 0 ? -lift : lift };
+      const roomAbove =
+        finger.y - lift >= 0 && r.y + (finger.y - lift) * r.height >= 0;
+      const roomBelow =
+        finger.y + lift <= 1 &&
+        r.y + (finger.y + lift) * r.height <= viewportHeight();
+      // 越靠近桌面底边抬升量越小,否则光标永远差一截,够不到最下面几行(Dock / 任务栏)。
+      const dy = roomAbove || !roomBelow
+        ? Math.max(-lift, finger.y - 1)
+        : Math.min(lift, 1 - finger.y);
+      handleOffset = { x: 0, y: dy };
     }
     moveHandle(finger);
   }
