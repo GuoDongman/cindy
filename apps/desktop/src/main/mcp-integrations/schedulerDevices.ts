@@ -12,6 +12,7 @@ const CHANNELS: Record<SchedulerRemoteOp, string> = {
   list: 'maker:schedule:list',
   get: 'maker:schedule:get',
   'list-runs': 'maker:schedule:list-runs',
+  create: 'maker:schedule:create',
   update: 'maker:schedule:update',
   pause: 'maker:schedule:pause',
   resume: 'maker:schedule:resume',
@@ -33,6 +34,7 @@ const MESSAGES: Record<string, string> = {
 };
 
 const WRITE_OPS: ReadonlySet<SchedulerRemoteOp> = new Set([
+  'create',
   'update',
   'pause',
   'resume',

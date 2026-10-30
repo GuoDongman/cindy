@@ -157,7 +157,7 @@ describe('desktop scheduler cross-device transport', () => {
       error: { code: 'IPC_ERROR' as const, message: '[NOT_FOUND] Session does not exist' },
     };
     for (const outcome of [lost, postHandler]) {
-      for (const op of ['update', 'pause', 'resume', 'delete', 'run-now'] as const) {
+      for (const op of ['create', 'update', 'pause', 'resume', 'delete', 'run-now'] as const) {
         const s = setup(
           vi.fn<Invoke>(async () => {
             if (outcome instanceof Error) throw outcome;

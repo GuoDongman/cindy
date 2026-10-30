@@ -27,6 +27,8 @@ import {
   type TaskActionRoutineSnapshot,
   type TaskActionScheduleDefinition,
   taskActionFingerprint,
+  remoteSchedulePlacement,
+  REMOTE_SCHEDULE_OWNER_REQUIRED,
   type TaskActionPrincipal,
   type TaskActionScope,
 } from './taskActionAuthorization.js';
@@ -242,6 +244,11 @@ export function createDesktopTaskActionAuthorizer(deps: {
           ? { workingDir: typeof args.workingDir === 'string' ? args.workingDir : undefined } : undefined;
         const scheduleIdArg = hookInstallation ? args.scheduleId : args.id;
         const scheduleDevice = call.server === 'cindy_scheduler' && typeof args.device === 'string' ? args.device : undefined;
+        // A verified owner relay is principal 'owner'. Cross-computer handoff alone is not.
+        if (remoteSchedulePlacement(call) && principal !== 'owner') {
+          rejectedDecision = REMOTE_SCHEDULE_OWNER_REQUIRED;
+          return null;
+        }
         const scheduleId = principal === 'autonomous' && runtimePermissionApplies &&
           (hookInstallation || call.server === 'cindy_scheduler' &&
             ['schedule_update', 'schedule_run_now', 'schedule_resume'].includes(call.tool)) && typeof scheduleIdArg === 'string'
