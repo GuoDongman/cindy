@@ -24,7 +24,7 @@ import { MarkdownRenderer } from '../MarkdownRenderer';
 // lost the <a>, and the rewrite must not run for other MarkdownRenderer callers.
 // Unit/DOM tier. jsdom's Selection.toString() is textContent-like (unlike Chromium),
 // so hard-break plain text stays a manual check.
-const LIST = '1. alpha\n2. beta [link](https://example.com)\n3. gamma';
+const LIST = '1. alpha\n2. beta [link](https://example.com), **bold**\n3. gamma';
 
 type Pick = (root: HTMLElement) => [Node, number, Node, number];
 
@@ -120,32 +120,13 @@ describe('assistant reply copy', () => {
   });
 
   it('drops the zero-size link menu anchor inside the copied item (TextEdit line break)', () => {
-    // DOM as copied from a real reply: each link renders a fixed, zero-size menu anchor beside it.
-    const wrapper = document.createElement('div');
-    wrapper.className = 'msg-markdown';
-    wrapper.innerHTML =
-      '<ol><li>item with a <a href="https://example.com">link</a>' +
-      '<span aria-hidden="true" data-fixed-menu-anchor style="position: fixed; width: 0px; height: 0px;"></span>' +
-      ', <strong>bold</strong></li></ol>';
-    document.body.appendChild(wrapper);
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(wrapper.querySelector('li')!);
-      window.getSelection()!.removeAllRanges();
-      window.getSelection()!.addRange(range);
-      const setData = vi.fn();
-      handleAssistantCopy({
-        currentTarget: wrapper,
-        clipboardData: { setData },
-        preventDefault: vi.fn(),
-      } as unknown as ClipboardEvent<HTMLElement>);
-      const html = setData.mock.calls.find(([type]) => type === 'text/html')![1] as string;
-      expect(html).not.toContain('data-fixed-menu-anchor');
-      expect(html).toContain('<a href="https://example.com">link</a>, <strong>bold</strong>');
-    } finally {
-      wrapper.remove();
-      window.getSelection()!.removeAllRanges();
-    }
+    // Rendered reply: each link renders a fixed, zero-size menu anchor beside it.
+    const { html } = copy(renderAssistant, (root) => {
+      const li = items(root)[1];
+      return [li, 0, li, li.childNodes.length];
+    });
+    expect(html).not.toContain('data-fixed-menu-anchor');
+    expect(html).toMatch(/link<\/a>, <strong[^>]*>bold<\/strong>/);
   });
 
   it('leaves the same selection outside an assistant reply to native copy', () => {
