@@ -27,6 +27,7 @@ import WebSocket from 'ws';
 import {
   DeviceLinkClient,
   FILE_PEER_CHANNEL,
+  isProviderSharePeer,
   isScopedPeer,
   parseSharedTaskPeer,
   parseProviderSharePeer,
@@ -774,6 +775,7 @@ export function initDeviceLinkService(options: DeviceLinkServiceOptions = {}): v
   });
 
   responsivenessTracker = createResponsivenessTracker({
+    confirmRelayForTimeout: () => client?.confirmRelayForPeerTimeout() ?? false,
     // 探测直接走 client.invoke(guardInvoke 已在 tracker 内持有探测席位,不能再套
     // remoteInvoke 的外层门禁,否则自旋)。曾协商可靠传输的 peer 必须先恢复 link，
     // 否则 sessions:list 也只会滞留发送队列，反复得到 BACKPRESSURE。
@@ -1041,6 +1043,8 @@ export function initDeviceLinkService(options: DeviceLinkServiceOptions = {}): v
   // 被控端:接线入站隧道(link-open / invoke / link-close → 本机 handler dispatch)
   setOrdinaryPeerLinkAcceptedListener((deviceId) => {
     broadcast(DEVICE_LINK_PUSH.PEER_LINK_REOPENED, { deviceId });
+    // 同账号互控共用双向链路；对端先开链也可能恢复本端传输，但不会触发出站 accept。
+    replayActiveSubscriptions(`inbound-link-accepted:${deviceId.slice(0, 8)}`, deviceId);
   });
   wireInboundDispatch(client);
   // outbox flush 的 presence 显式离线门禁(运行期接线,模块顶层会撞 import 环 TDZ)
@@ -1050,6 +1054,17 @@ export function initDeviceLinkService(options: DeviceLinkServiceOptions = {}): v
   startBusyReporting();
 
   client.onPeerStreamAccepted((peer, streamId) => {
+    // 本端主动建链后，出站 accept 在已验证握手完成、恢复业务帧投递之前通知。
+    // 对端 relay 闪断重连会清掉它那边本机的活跃订阅注册(deactivateAllControllers),
+    // 而本机 relay/presence/熔断可能全程无感知(传输层 link 经 replay 透明恢复),
+    // 若只等 ws-online / presence / 熔断恢复这些既有事件才重订,push 驱动的
+    // 列表与活动镜像会永久静默缺流(2026-10-20 线上:被控端 relay 探活超时 3s 重连后,
+    // 控制端列表 running/未读状态永久冻结,invoke 与 session 事件流却正常)。
+    // 订阅按既有契约幂等,重放经调度器按 peer 串行去重;无订阅快照的 peer 是 no-op;
+    // provider-share guest 只轮询不订阅,排除在外。
+    if (!isProviderSharePeer(peer)) {
+      replayActiveSubscriptions(`link-accepted:${peer.slice(0, 8)}`, peer);
+    }
     if (parseSharedTaskPeer(peer)?.role !== 'host' || sharedHostStreams.get(peer)?.streamId === streamId) return;
     sharedHostStreams.set(peer, { streamId, epoch: ++sharedHostSourceEpoch });
   });
@@ -1764,8 +1779,9 @@ function assertRemoteControlTargetEnabled(deviceId: string): void {
  */
 const CONNECT_READY_TIMEOUT_MS = 1_500;
 
-async function ensureOnlineForRequest(): Promise<void> {
-  if (!client || client.getStatus() === 'online') return;
+async function ensureOnlineForRequest(deviceId?: string): Promise<void> {
+  if (!client || client.getStatus() === 'online'
+    || (deviceId && client.hasOfflineDirectPath(deviceId))) return;
   await client.waitUntilOnline(CONNECT_READY_TIMEOUT_MS);
 }
 
@@ -1958,12 +1974,12 @@ export async function remoteInvoke(
   }
   const invoke = async (): Promise<InvokeResultPayload> => {
     // 熔断门禁(外层 guardInvoke)在连接等待之前:open 态快速失败,不消耗 1.5s 等待。
-    await ensureOnlineForRequest();
+    await ensureOnlineForRequest(deviceId);
     // fail-closed 边界不得跨 await 失效:等待期间用户可能已关闭该设备控制(复验
     // 授权),或显式 CLOSE_LINK(复验取消代次)(review P1 ×2)。
     preSend();
     if (!client) throw new Error('[DEVICE_LINK_NOT_CONNECTED] device-link client not initialized');
-    // 共享任务与供应商分享的对端是另一个账号：只走 relay，不尝试点对点直连。
+    // 同账号专用的 tryPeerInvoke 不用于 scoped peer；供应商分享直连由 DeviceLinkClient 的可靠传输层处理。
     if (!isScopedPeer(deviceId)) {
       // 直连会保存这个回调，之后在空闲关闭等定时器里调用（届时 preSend 可能已失效）。
       // 必须是 async：失效时返回 rejected promise，不能同步抛出绕过调用方的 .catch。
@@ -2017,7 +2033,7 @@ export async function remoteBackgroundInvoke(
   // 分享来的供应商：任务记录里是 `share:<id>`，换成分享者那台电脑的本地 peer key。
   const deviceId = await resolveRemoteAgentTargetWhenReady(agentDeviceId);
   options?.preSend?.();
-  const shared = deviceId !== agentDeviceId;
+  const shared = deviceId !== agentDeviceId || parseProviderSharePeer(deviceId)?.role === 'host';
   if (!shared) return backgroundInvokeDevice(deviceId, channel, args, options);
   try {
     // 跨区域分享：分享者电脑在另一个区域的 relay 上，经那条连接发送。
@@ -2087,7 +2103,7 @@ export async function remoteSubscribe(
   // CLOSE_LINK 的在途调用;之后的新调用(重放重试 / 用户重开)按新代次照常。
   const closeEpoch = openLinkCloseEpochs.get(deviceId) ?? 0;
   const run = async (): Promise<InvokeResultPayload> => {
-    await ensureOnlineForRequest();
+    await ensureOnlineForRequest(deviceId);
     let liveTopics = liveTopicsNow();
     if (liveTopics.length === 0) return { ok: true, result: null };
     if (!client) throw new Error('[DEVICE_LINK_NOT_CONNECTED] device-link client not initialized');

@@ -1,3 +1,4 @@
+import { teammateGroupActivity } from '@cindy/maker-shared/teammate-status';
 /**
  * Bot group chat for controllers (phones) through the Remote Resource protocol
  * (docs/product-rules/bot-group-chat.md §8, docs/dev-rules/remote-and-mobile-adaptation.md).
@@ -39,6 +40,7 @@ import {
   BOT_GROUP_MEMBER_LINK_REL,
   BOT_GROUP_REMOTE_COLLECTION_ID,
   BOT_GROUP_REMOTE_RESOURCE_KIND,
+  type ChatMaskAction,
   type BotGroupDetail,
   type BotGroupFailure,
   type BotGroupMessageView,
@@ -172,6 +174,7 @@ export function botGroupRemoteItem(group: BotGroupSummary): RemoteCollectionItem
     ref: groupRef(group.id),
     display: {
       title: group.name,
+      teammateActivity: teammateGroupActivity(group),
       subtitle: group.members.map((member) => member.name).join('、'),
       ...(preview ? { preview } : {}),
       timestamp: botGroupActivityAt(group),
@@ -187,6 +190,7 @@ export function botGroupRemoteItem(group: BotGroupSummary): RemoteCollectionItem
       label: member.name,
     })),
     revision: JSON.stringify([
+      teammateGroupActivity(group).phase,
       group.updatedAt,
       group.name,
       group.members.map((member) => [member.botId, member.name, member.status]),
@@ -224,6 +228,7 @@ export function botGroupRemoteChatData(detail: BotGroupDetail): BotGroupRemoteCh
       .map(([id, share]) => [id, shareWithoutPaths(share)])) } : {}),
     supportsAttachments: true,
     supportsReadReceipts: detail.serverBacked === true,
+    supportsPersonalMask: detail.serverBacked === true,
     supportsMemberRemoval: detail.serverBacked === true,
     supportsSettingsManagement: detail.serverBacked === true,
   };
@@ -279,8 +284,17 @@ export async function botGroupMembersVisibleRemotely(memberBotIds: readonly stri
   return memberBotIds.every((botId) => visibility.get(botId) === true);
 }
 
-async function assertBotsVisible(botIds: readonly string[]): Promise<void> {
+async function assertBotsVisible(botIds: readonly string[], server?: BotGroupChatService['chatServer']): Promise<void> {
   const visibility = await remoteVisibility(botIds);
+  // Only absent local rows can be resolved account-wide. A hidden local row is
+  // never made remotely visible by also appearing in the cloud directory.
+  const missing = botIds.filter(botId => !visibility.has(botId));
+  if (missing.length && server) {
+    const owned = await server.ownedBots();
+    if (owned.ok) for (const bot of owned.bots) {
+      if (bot.botId && missing.includes(bot.botId)) visibility.set(bot.botId, true);
+    }
+  }
   if (botIds.some((botId) => visibility.get(botId) !== true)) {
     throw new RemoteResourceRegistryError('INVALID_PARAMS', 'MEMBER_UNAVAILABLE');
   }
@@ -371,7 +385,7 @@ export function registerBotGroupRemoteResourceProvider(service: () => BotGroupCh
 
       if (actionId === 'create') {
         const botIds = botIdsInput();
-        await assertBotsVisible(botIds);
+        await assertBotsVisible(botIds, ownerService().chatServer);
         const created = await ownerService().createGroup({ name: input.name, botIds });
         if (!created.ok) refuse(created);
         return {
@@ -405,7 +419,7 @@ export function registerBotGroupRemoteResourceProvider(service: () => BotGroupCh
       if (actionId === 'add-member') {
         if (!visibleGroup.serverBacked || typeof input.botId !== 'string')
           throw new RemoteResourceRegistryError('INVALID_PARAMS', 'INVALID_PARAMS');
-        await assertBotsVisible([input.botId]);
+        await assertBotsVisible([input.botId], ownerService().chatServer);
       }
       const candidateId = actionId === 'update' ? input.organizerBotId : actionId === 'plan-edit' ? input.botId : undefined;
       if (typeof candidateId === 'string') {
@@ -416,9 +430,9 @@ export function registerBotGroupRemoteResourceProvider(service: () => BotGroupCh
         } else await assertBotsVisible([candidateId]);
       }
       if (actionId === 'set-members') {
-        // Preserve server humans and foreign companions; only newly added IDs need local visibility.
+        // Preserve existing server members; additions must be visible local or owned cloud companions.
         const currentMemberIds = new Set(visibleGroup.members.map(member => member.botId));
-        await assertBotsVisible(botIdsInput().filter(botId => !currentMemberIds.has(botId)));
+        await assertBotsVisible(botIdsInput().filter(botId => !currentMemberIds.has(botId)), visibleGroup.serverBacked ? ownerService().chatServer : undefined);
       }
       const current = ownerService();
       const planInput = { groupId, planId: input.planId };
@@ -435,6 +449,20 @@ export function registerBotGroupRemoteResourceProvider(service: () => BotGroupCh
             ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
           }, { controllerDeviceId: context.controllerDeviceId });
           break;
+        case 'mask':
+        case 'mask-mentions': {
+          if (!visibleGroup.serverBacked || !current.chatServer?.mask || !current.chatServer.mentions)
+            throw new RemoteResourceRegistryError('INVALID_PARAMS', 'UNSUPPORTED_OPERATION');
+          // The ordinary account-scoped API validates the complete input and keeps
+          // the mask owner separate from the group's administrator.
+          const receipt = actionId === 'mask'
+            ? await current.chatServer.mask({ groupId, action: input.action as ChatMaskAction | undefined, operationId: input.operationId as string | undefined })
+            : await current.chatServer.mentions({ groupId, before: input.before as string | undefined,
+              readIds: input.readIds as string[] | undefined, operationId: input.operationId as string | undefined });
+          if (!receipt.ok) throw new RemoteResourceRegistryError('INVALID_PARAMS', receipt.errorCode);
+          ownerService();
+          return { result: receipt, effects: [] };
+        }
         case 'read': {
           if (!visibleGroup.serverBacked || !current.chatServer || typeof input.messageId !== 'string')
             throw new RemoteResourceRegistryError('INVALID_PARAMS', 'INVALID_PARAMS');

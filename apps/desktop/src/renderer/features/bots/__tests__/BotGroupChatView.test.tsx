@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
     options && 'name' in options ? `${key}:${String(options.name)}`
       : key === 'bots.groupChat.memberCount' ? `${key}:${String(options?.count)}` : key,
   groupId: 'g1',
+  locationState: null as { createdGroupInvite?: string | null } | null,
+  createInvite: vi.fn(),
   navigate: vi.fn(),
   getBotGroup: vi.fn(),
   cachedGroup: null as BotGroupDetail | null,
@@ -72,7 +74,7 @@ vi.mock('react-i18next', async (original) => ({
   }),
 }));
 vi.mock('react-router-dom', () => ({
-  useLocation: () => ({ pathname: '/bots/groups/g1', search: '' }),
+  useLocation: () => ({ pathname: `/bots/groups/${mocks.groupId}`, search: '', state: mocks.locationState }),
   useNavigate: () => mocks.navigate,
   useParams: () => ({ groupId: mocks.groupId }),
 }));
@@ -284,6 +286,8 @@ beforeEach(() => {
   resetBotReadStateForTests();
   resetBotGroupOutboxForTests();
   mocks.groupId = 'g1';
+  mocks.locationState = null;
+  mocks.createInvite.mockReset().mockResolvedValue({ ok: true, link: 'cindy://chat-invite/preview', expiresAt: null, reusable: true });
   __resetControlledBannerForTests();
   mocks.controlledPush = null;
   mocks.getControlledState.mockReset().mockResolvedValue({ controlledBy: [] });
@@ -332,7 +336,7 @@ beforeEach(() => {
       cleanupCachedImages: vi.fn(async () => undefined),
       getFileThumbnail: vi.fn(async () => null),
       maker: {
-        chatServer: { thread: mocks.thread, reply: mocks.reply, shareToMain: mocks.shareToMain, reactors: vi.fn(async () => ({ ok: true, reactors: [] })) },
+        chatServer: { createInvite: mocks.createInvite, thread: mocks.thread, reply: mocks.reply, shareToMain: mocks.shareToMain, reactors: vi.fn(async () => ({ ok: true, reactors: [] })) },
         listBotGroups: vi.fn(async () => ({ ok: true, groups: [] })),
         getBotGroup: (...args: unknown[]) => (args[1] as { cacheOnly?: boolean } | undefined)?.cacheOnly
           ? Promise.resolve(mocks.cachedGroup ? { ok: true, group: mocks.cachedGroup } : { ok: false, errorCode: 'NOT_FOUND' })
@@ -359,6 +363,70 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('BotGroupChatView', () => {
+  // Renderer integration: isolated confirmed deltas must not conceal a missing page after reconnect.
+  it('keeps a skipped message reachable by pagination after multiple deltas overtake a full page', async () => {
+    const page = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, index) =>
+      msg({ id: `gap-${from + index}`, sequence: from + index, content: `Gap sample ${from + index}` }));
+    const initial = detail({ historyRevision: 'live', messages: page(1, 3), hasMoreBefore: false });
+    mocks.getBotGroup.mockResolvedValue({ ok: true, group: initial });
+    renderView(); await screen.findByText('Gap sample 1');
+    let finish!: (value: unknown) => void;
+    mocks.getBotGroup.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockResolvedValue({ ok: true, group: detail({ ...initial, messages: page(5, 7), hasMoreBefore: true }) });
+    act(() => { for (const push of mocks.pushes) push({ groupId: 'g1', change: 'messages', historyRevision: 'live', messages: page(6, 6) }); });
+    await screen.findByText('Gap sample 6');
+    act(() => { for (const push of mocks.pushes) push({ groupId: 'g1', change: 'messages', historyRevision: 'live', messages: page(7, 7) }); });
+    await screen.findByText('Gap sample 7');
+    await act(async () => finish({ ok: true, group: initial }));
+    await screen.findByText('Gap sample 5');
+    mocks.getBotGroup.mockResolvedValueOnce({ ok: true, group: detail({ ...initial, messages: page(2, 4), hasMoreBefore: true }) });
+    fireEvent.click(await screen.findByRole('button', { name: 'bots.groupChat.timeline.loadEarlier' }));
+    await screen.findByText('Gap sample 4');
+    expect(mocks.getBotGroup.mock.lastCall?.[1]).toMatchObject({ beforeSequence: 5 });
+    expect(screen.getAllByText('Gap sample 7')).toHaveLength(1);
+  });
+
+  // Unit: an authenticated main-chat delta used to wait for the full room IPC
+  // (read state, plans and executions). A late full read must not erase that delta.
+  it.each([false, true])('renders committed messages during a full refresh and preserves revocation (revoked: %s)', async revoked => {
+    const initial = detail({ serverBacked: true, historyRevision: 'live', messages: [msg({ content: 'Already visible' })] });
+    mocks.getBotGroup.mockResolvedValue({ ok: true, group: initial });
+    renderView(); await screen.findByText('Already visible');
+    let finish!: (value: unknown) => void;
+    mocks.getBotGroup.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    act(() => { for (const push of mocks.pushes) push({ groupId: 'g1', change: 'messages' }); });
+    await waitFor(() => expect(finish).toBeTypeOf('function'));
+    const fresh = msg({ id: 'fresh-share', sequence: 200, content: 'Server confirmed delta' });
+    mocks.getBotGroup.mockImplementation(() => new Promise(() => {}));
+    act(() => { for (const push of mocks.pushes) push({ groupId: 'g1', change: 'messages', historyRevision: 'live', messages: [fresh] }); });
+    expect(await screen.findByText('Server confirmed delta')).toBeTruthy();
+    act(() => { for (const push of mocks.pushes) push({ groupId: 'g1', change: 'messages', historyRevision: 'revoked',
+      messages: [msg({ id: 'wrong-generation', sequence: 201, content: 'Stale account content' })] }); });
+    expect(screen.queryByText('Stale account content')).toBeNull();
+    await act(async () => finish(revoked ? { ok: false, errorCode: 'PERMISSION_DENIED' } : { ok: true, group: initial }));
+    if (revoked) expect(screen.queryByText('Server confirmed delta')).toBeNull();
+    else expect(screen.getAllByText('Server confirmed delta')).toHaveLength(1);
+  });
+
+  // Regression: returning to a group must not replay its consumed creation intent.
+  it('does not reopen a created invitation or regenerate its link after leaving and returning', async () => {
+    mocks.locationState = { createdGroupInvite: 'g1' };
+    const tree = () => <Tooltip.Provider><FeatureSidebarSlotProvider isCollapsed={false}>
+      <HeaderSlot /><BotGroupChatView />
+    </FeatureSidebarSlotProvider></Tooltip.Provider>;
+    const view = render(tree());
+    await screen.findByRole('button', { name: 'bots.groupChat.server.copyLink' });
+    expect(mocks.createInvite).toHaveBeenCalledTimes(1);
+    mocks.locationState = { createdGroupInvite: null };
+    mocks.groupId = 'g2';
+    view.rerender(tree());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    mocks.groupId = 'g1';
+    view.rerender(tree());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.createInvite).toHaveBeenCalledTimes(1);
+  });
+
   it('clears the selected route when an authoritative personal hide unmounts settings', async () => {
     renderView();
     await screen.findByRole('textbox');
@@ -811,7 +879,8 @@ describe('BotGroupChatView', () => {
       const panel = screen.getByRole('complementary');
       button.focus();
       expect(panel.parentElement?.contains(button)).toBe(false);
-      if (button.getAttribute('aria-label') === 'bots.groupChat.settings.open') await screen.findByRole('tooltip');
+      // Header icon buttons with a tooltip: its Escape closes the tooltip first.
+      if (button.getAttribute('aria-label') === 'bots.groupChat.settings.open' || button.dataset.testid === 'chat-group-invite') await screen.findByRole('tooltip');
       fireEvent.keyDown(button, { key: 'Escape', isComposing: true, keyCode: 229 });
       const consumed = createEvent.keyDown(button, { key: 'Escape', bubbles: true, cancelable: true });
       consumed.preventDefault();
@@ -3320,7 +3389,7 @@ describe('Telegram / Slack-grade timeline', () => {
     });
     mocks.getBotGroup.mockResolvedValue({ ok: true, group: withPlan(running, [], {
       speakingBotIds: ['mimi'],
-      round: { status: 'running', speakers: [{ botId: 'mimi', sessionId: 'plan-mimi', activity: 'step' }], canContinue: false },
+      round: { status: 'running', speakers: [{ botId: 'mimi', sessionId: 'plan-mimi', activity: 'step', startedAt: Date.now() - 125_000 }], canContinue: false },
     }) });
     renderView();
     const strip = await screen.findByTestId('bot-group-progress');
@@ -3630,6 +3699,66 @@ describe('thread previews and posting to the main chat', () => {
     expect(mocks.reply.mock.calls[1][0]).toMatchObject({ rootId: 'u1', text: '@咪咪 both' });
     // Each send starts from the default again.
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));
+  });
+
+  // Unit, topic latency reproduction: the HTTP receipt arrived seconds before
+  // the history echo, but the real bubble still announced "sending" during that gap.
+  // Existing optimistic tests only settled after the next history read completed.
+  it('ends the topic sending state on its receipt while the history echo is still loading', async () => {
+    mocks.getBotGroup.mockResolvedValue({ ok: true, group: group([msg({ id: 'u1', content: 'Root' })]) });
+    let confirm!: (result: unknown) => void;
+    mocks.reply.mockImplementationOnce(() => new Promise(resolve => { confirm = resolve; }));
+    const user = userEvent.setup(); renderView();
+    await user.click(await screen.findByRole('button', { name: 'bots.groupChat.server.startTopic' }));
+    const panel = await screen.findByRole('complementary');
+    await within(panel).findByText('Thread root u1');
+    mocks.thread.mockImplementation(() => new Promise(() => {}));
+    mocks.shareToMain.mockImplementationOnce(() => new Promise(() => {}));
+    await user.click(within(panel).getByRole('checkbox', { name: t('alsoSend') }));
+    const input = within(panel).getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Receipt before echo' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    const article = (await within(panel).findByText('Receipt before echo')).closest('article')!;
+    expect(article.getAttribute('aria-busy')).toBe('true');
+    await act(async () => confirm({ ok: true, messageId: 'confirmed-topic-reply' }));
+    expect(article.getAttribute('aria-busy')).not.toBe('true');
+    expect(mocks.shareToMain).toHaveBeenCalledWith({ groupId: 'g1', messageId: 'confirmed-topic-reply' });
+    expect(input.hasAttribute('disabled')).toBe(false);
+    expect(within(panel).getAllByText('Receipt before echo')).toHaveLength(1);
+    // An acknowledged local row still waits for the authorized server projection
+    // before exposing message actions or borrowing server identity metadata.
+    expect(within(article).queryByRole('button', { name: 'chat.messageActionBar.moreActions' })).toBeNull();
+  });
+
+  // Unit: a slow share request previously left the main chat empty. The local
+  // row must appear before the receipt, settle only on success, roll back on failure,
+  // and adopt the real server row without duplicating it or losing its DOM identity.
+  it.each([false, true])('shows a pending main-chat copy immediately (failed: %s)', async failed => {
+    const initial = group([msg({ id: 'u1', content: 'Root' })]);
+    mocks.getBotGroup.mockResolvedValue({ ok: true, group: initial });
+    let settle!: (result: unknown) => void;
+    mocks.shareToMain.mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    const user = userEvent.setup(); renderView();
+    await user.click(await screen.findByRole('button', { name: 'bots.groupChat.server.startTopic' }));
+    const panel = await screen.findByRole('complementary');
+    const reply = (await within(panel).findByText('Reply to u1')).closest('article')!;
+    fireEvent.pointerDown(within(reply).getByRole('button', { name: 'chat.messageActionBar.moreActions' }), { button: 0, ctrlKey: false });
+    await user.click(await screen.findByRole('menuitem', { name: t('postToMain') }));
+    const timeline = screen.getByTestId('bot-group-timeline');
+    const row = (await within(timeline).findByText('Reply to u1')).closest('article')!;
+    expect(row.getAttribute('aria-busy')).toBe('true');
+    expect(within(row).getByText('bots.groupChat.timeline.sending')).toBeTruthy();
+    await act(async () => settle(failed ? { ok: false, errorCode: 'SERVICE_ERROR' }
+      : { ok: true, messageId: 'real-main-copy', alreadyShared: false }));
+    if (failed) { expect(within(timeline).queryByText('Reply to u1')).toBeNull(); return; }
+    expect(row.getAttribute('aria-busy')).not.toBe('true');
+    const real = msg({ id: 'real-main-copy', sequence: 20, content: '', isSelf: true, threadShare: {
+      messageId: 'reply-u1', threadRootId: 'u1', status: 'available', authorKind: 'user', authorBotId: null,
+      authorName: '', sharedByAuthor: true, content: 'Reply to u1', attachments: [], createdAt: 1, edited: false } });
+    mocks.getBotGroup.mockResolvedValue({ ok: true, group: { ...initial, messages: [...initial.messages, real] } });
+    act(() => { for (const push of mocks.pushes) push({ groupId: 'g1', change: 'messages' }); });
+    await waitFor(() => expect(within(timeline).getAllByText('Reply to u1')).toHaveLength(1));
+    expect(within(timeline).getByText('Reply to u1').closest('article')).toBe(row);
   });
 
   it('retries only the main-chat copy after the reply already reached the thread', async () => {
@@ -4168,6 +4297,23 @@ it('keeps only the current public progress note between tool calls', () => {
     expect(botGroupWorkPreview({ ...state, messages: [{ ...note, ...patch }] } as Parameters<typeof botGroupWorkPreview>[0], 2)).toBe('');
   }
   expect(botGroupWorkPreview({ ...state, streamingText: 'NO_REPLY' }, 2)).toBe('');
+});
+
+// #7583, unit: missing start timestamps must not turn a stale waiting execution
+// into a newly started timer. Existing progress cases all supplied a timestamp.
+it('keeps waiting work inspectable without inventing an elapsed time', async () => {
+  mocks.getBotGroup.mockResolvedValue({ ok: true, group: detail({ speakingBotIds: ['mimi'], round: {
+    status: 'running', canContinue: false, speakers: [
+      { botId: 'mimi', activity: 'reply', executionId: 'waiting', sessionId: 'lane-mimi', executionStatus: 'needs_input' },
+    ],
+  } }) });
+  renderView();
+  const strip = await screen.findByTestId('bot-group-progress');
+  expect(strip.textContent).toContain('bots.groupChat.waitingConfirm');
+  expect(strip.textContent).not.toContain('bots.groupChat.progress.elapsed');
+  expect(screen.queryByTestId('bot-group-speaking')).toBeNull();
+  fireEvent.click(within(strip).getByRole('button', { name: 'bots.groupChat.progress.viewProcess' }));
+  expect(mocks.navigate).toHaveBeenCalledWith('/cc-agent/lane-mimi');
 });
 
 // Group work identity: the source computer returns two concurrent executions of the

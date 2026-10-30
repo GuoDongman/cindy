@@ -205,6 +205,15 @@ function parseAttachment(value: unknown): BotGroupAttachment | null {
   };
 }
 
+function parseMaskAttribution(value: unknown): BotGroupMessageView['maskAttribution'] {
+  const record = recordOf(value), self = recordOf(record?.self), companion = recordOf(record?.companion);
+  if (!id(record?.sourceMessageId) || !id(self?.id) || !id(companion?.id)
+    || typeof self?.name !== 'string' || typeof companion?.name !== 'string') return undefined;
+  return { sourceMessageId: id(record?.sourceMessageId)!,
+    self: { id: id(self.id)!, name: self.name, avatarUrl: text(self.avatarUrl, 4096) },
+    companion: { id: id(companion.id)!, name: companion.name, avatarUrl: text(companion.avatarUrl, 4096) } };
+}
+
 function parseMessage(value: unknown): BotGroupMessageView | null {
   const record = recordOf(value);
   const messageId = id(record?.id);
@@ -227,6 +236,7 @@ function parseMessage(value: unknown): BotGroupMessageView | null {
     ...(typeof record.serverSequence === 'string' && /^\d{1,30}$/.test(record.serverSequence) ? { serverSequence: record.serverSequence } : {}),
     kind,
     authorKind,
+    maskAttribution: parseMaskAttribution(record.maskAttribution),
     ...(typeof record.isSelf === 'boolean' ? { isSelf: record.isSelf } : {}),
     ...(optionalId(record.threadRootId) ? { threadRootId: optionalId(record.threadRootId) } : {}),
     authorBotId: optionalId(record.authorBotId),
@@ -382,9 +392,13 @@ export function parseBotGroupChatData(value: unknown): BotGroupRemoteChatData | 
     supportsGroupLeave: record.supportsGroupLeave === true,
     supportsListRemoval: record.supportsListRemoval === true,
     ...(Number.isSafeInteger(record.revision) && Number(record.revision) > 0 ? { revision: Number(record.revision) } : {}),
+    // 群介绍 shows on the phone; this path only renames (the computer ignores the rest).
+    ...(text(record.topic, 250) ? { topic: text(record.topic, 250)! } : {}),
+    ...(text(record.description, 2_000) ? { description: text(record.description, 2_000)! } : {}),
     supportsMemberRemoval: record.supportsMemberRemoval === true,
     supportsSettingsManagement: record.supportsSettingsManagement === true,
     supportsReadReceipts: record.supportsReadReceipts === true,
+    supportsPersonalMask: record.supportsPersonalMask === true,
     replyMode: record.replyMode === 'mentioned' ? 'mentioned' : 'all',
     speakingMode: record.speakingMode === 'sequential' ? 'sequential' : 'auto',
     members,

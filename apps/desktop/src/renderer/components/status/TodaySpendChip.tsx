@@ -1,3 +1,4 @@
+import { isKimiCodingProviderView, kimiUsageWindowMinutes } from '../../../shared/kimiCodingUsage';
 import { useCodexRateLimitReset } from '@/hooks/useCodexRateLimitReset';
 import { CodexResetCredits } from './CodexResetCredits';
 import {
@@ -49,6 +50,8 @@ import { useClaudeOAuthConnected } from '@/hooks/useClaudeOAuthConnected';
 import { useClaudeSessionRoute } from '@/hooks/useClaudeSessionRoute';
 import { useSessionUsageMoney, type SessionUsageMoney } from '@/hooks/useSessionUsageMoney';
 import { useSessionTokens } from '@/hooks/useSessionTokens';
+import { useUsageCostDetails } from '@/hooks/useUsageCostDetails';
+import { UsageCostDetails } from './UsageCostDetails';
 import { useChatDisplaySnapshot } from '@/components/chat/ChatDisplaySnapshotContext';
 import {
   requestCodexAccountRefresh,
@@ -131,6 +134,7 @@ import {
   buildDeepSeekUsageCard,
   buildXaiUsageCard,
   buildZhipuUsageCard,
+  buildKimiUsageCard,
   type UsageCardAccount,
 } from './usageCardModel';
 import { useProviderAccountUsage } from '@/hooks/useProviderAccountUsage';
@@ -1004,7 +1008,8 @@ export function TodaySpendChip({
     !isAnyRemoteSession && Boolean(hasDeepSeekOfficialRouteView(selectedQuotaProvider));
   const usesZhipuCodingPlanForm =
     !isAnyRemoteSession && Boolean(isZhipuCodingPlanProviderView(selectedQuotaProvider));
-  const usesProviderAccountUsageForm = usesDeepSeekAccountForm || usesZhipuCodingPlanForm;
+  const usesKimiCodingForm = !remoteHostId && !accountUnreadable && isKimiCodingProviderView(selectedQuotaProvider);
+  const usesProviderAccountUsageForm = usesDeepSeekAccountForm || usesZhipuCodingPlanForm || usesKimiCodingForm;
   // 会话所在引擎 → 查询用 runtime：同一供应商各引擎可用不同账户的独立密钥，
   // 余额/配额必须对准当前会话实际路由的账户（vendorKey 缺省 = 默认路由，不传）。
   const providerAccountAgent: AgentKind | undefined =
@@ -1018,6 +1023,7 @@ export function TodaySpendChip({
   const providerAccountUsage = useProviderAccountUsage(
     usesProviderAccountUsageForm && providerAccountAgent ? selectedQuotaProvider : undefined,
     providerAccountAgent,
+    usesKimiCodingForm ? accountDeviceId : null,
   );
   const providerAccountSnapshot =
     providerAccountUsage.result?.status === 'ready' ? providerAccountUsage.result.snapshot : null;
@@ -1157,6 +1163,7 @@ export function TodaySpendChip({
   const quotaCardSessionUsage = toQuotaHoverCardSessionUsage(sessionUsage, sessionTokens);
   const quotaCardTurnUsage = toQuotaHoverCardTurnUsage(latestTurnUsage, t);
   const [quotaPopoverOpen, setQuotaPopoverOpen] = React.useState(false);
+  const costDetails = useUsageCostDetails(sessionId, quotaPopoverOpen);
   // 浮层宿主：紧跟触发器之后（见 popover.tsx 的 portalContainer 注释）。portal 到 body
   // 末尾时，键盘焦点一旦进卡就再也 Tab 不回底栏（用户实测）。
   const [quotaPopoverPortalHost, setQuotaPopoverPortalHost] = React.useState<HTMLDivElement | null>(
@@ -1399,7 +1406,9 @@ export function TodaySpendChip({
         ? t('todaySpend.openCodexUsage')
         : isClaudeSubscription
           ? t('todaySpend.openClaudeUsage')
-          : usesDeepSeekAccountForm
+          : usesKimiCodingForm
+            ? t('providerAccountUsage.kimi.usage')
+            : usesDeepSeekAccountForm
             ? t('providerAccountUsage.openDashboard')
             : usesZhipuCodingPlanForm
               ? t('providerAccountUsage.zhipuCodingPlan.usage')
@@ -1412,7 +1421,19 @@ export function TodaySpendChip({
 
   // 当前形态下 chip 展示的限额窗口段 (Codex 订阅 / Claude 订阅 / 智谱 Coding Plan 共用结构);
   // 其它形态为空数组, 两个 rollup slot 空转。
-  const chipWindows: ChipWindowSegment[] = usesCodexQuotaForm
+  const chipWindows: ChipWindowSegment[] = usesKimiCodingForm
+    ? (providerAccountSnapshot?.kind === 'kimi-coding-quota' && providerAccountUsage.result?.status === 'ready' && !providerAccountUsage.result.stale
+      ? providerAccountSnapshot.windows.slice(0, 2).map(w => ({
+        key: w.id,
+        label: w.id === 'limit_month_total' || w.id === 'limit_month_code'
+          ? t(`providerAccountUsage.kimi.${w.id}`)
+          : formatCompactTimeUntilReset(w.resetsAt === null ? null : w.resetsAt / 1000, windowLabelNowMs, t, kimiUsageWindowMinutes(w.id)) ?? t(`providerAccountUsage.kimi.${w.id}`),
+        remainingPercent: 100 - w.usedPercent,
+        resetsAtMs: w.resetsAt,
+        resetPending: isResetPending(w.resetsAt, windowLabelNowMs),
+        alerting: w.usedPercent >= 80,
+      })) : [])
+    : usesCodexQuotaForm
     ? getCodexChipWindows(accountUsage, t, windowLabelNowMs)
     : usesXaiQuotaForm
       ? getXaiChipWindows(xaiSubscriptionUsage, t, windowLabelNowMs)
@@ -1528,6 +1549,7 @@ export function TodaySpendChip({
       && !usesXaiQuotaForm
       && !isClaudeSubscription
       && !usesZhipuCodingPlanForm
+      && !usesKimiCodingForm
       && !quotaPopoverOpen
     ) {
       return undefined;
@@ -1542,6 +1564,7 @@ export function TodaySpendChip({
     usesXaiQuotaForm,
     isClaudeSubscription,
     usesZhipuCodingPlanForm,
+    usesKimiCodingForm,
     quotaPopoverOpen,
     windowLabelNowMs,
     chipResetsAtMsList,
@@ -1597,7 +1620,6 @@ export function TodaySpendChip({
     windowLabelNowMs,
   ]);
 
-  const isDashboardClickable = usageDashboardUrl !== null;
   const handleClick = () => {
     if (!usageDashboardUrl) return; // 网关账号暂无看板:点击无反应
     void window.electronAPI.openExternal(usageDashboardUrl);
@@ -1641,7 +1663,9 @@ export function TodaySpendChip({
     // SSH 远程(remoteHostId)没有账号快照镜像,只显示价值估算;device-link 远程的
     // accountUsage / xai / claude 快照均已在上方切到被控端镜像,与本机同一套卡片渲染。
     if (!remoteHostId) {
-      account = usesCodexQuotaForm
+      account = usesKimiCodingForm
+        ? buildKimiUsageCard(providerAccountSnapshot?.kind === 'kimi-coding-quota' ? providerAccountSnapshot : null, t)
+        : usesCodexQuotaForm
         ? buildCodexUsageCard(
             accountUsage,
             !isAnyRemoteSession && codexRateLimits?.rateLimitResetCredits ? null : codexResetSummary,
@@ -1665,8 +1689,9 @@ export function TodaySpendChip({
                   t,
                 )
               : buildClaudeUsageCard(claudeSubscriptionUsage, t);
+      if (usesKimiCodingForm && providerAccountUsage.result?.status === 'ready' && providerAccountUsage.result.stale) account.notices = [{ text: t('providerAccountUsage.kimi.stale'), tone: 'warn' }];
       if (usesProviderAccountUsageForm && providerAccountUsage.result?.status === 'unavailable') {
-        account.emptyText = t(`providerAccountUsage.error.${providerAccountUsage.result.error}`);
+        account.emptyText = t(`providerAccountUsage.${usesKimiCodingForm ? 'kimi.' : ''}error.${providerAccountUsage.result.error}`);
       }
       if (
         !usesProviderAccountUsageForm &&
@@ -1831,10 +1856,8 @@ export function TodaySpendChip({
             ref={setQuotaPopoverFocusTarget}
             type="button"
             onClick={(event) => {
-              // 阻止 Radix 把 dashboard 点击解释成开关，chip 原动作保持不变。
               event.preventDefault();
-              if (isDashboardClickable) handleClick();
-              else openQuotaPopoverImmediately();
+              openQuotaPopoverImmediately();
             }}
             onMouseEnter={handleQuotaPopoverTriggerMouseEnter}
             onMouseLeave={handleQuotaPopoverMouseLeave}
@@ -1853,7 +1876,8 @@ export function TodaySpendChip({
               closeQuotaPopoverImmediately();
             }}
             className={buttonClass}
-            aria-label={usageDashboardLabel ?? t('quotaCard.usageTitle')}
+            aria-label={t('quotaCard.usageTitle')}
+            data-testid="task-usage-trigger"
           >
             {labelNode}
           </button>
@@ -1935,7 +1959,9 @@ export function TodaySpendChip({
                 {manualReset.canRetry ? t('codexResets.retryReset') : t('codexResets.available', { count: codexRateLimits?.rateLimitResetCredits?.availableCount ?? 0 })}
               </Button>
             ) : null}
-          />
+          >
+            {sessionId ? <div className="px-4 py-3"><UsageCostDetails rows={costDetails} /></div> : null}
+          </QuotaHoverCard>
         </PopoverContent>
       </Popover>
       <Dialog.Root open={resetListOpen && usesCodexQuotaForm && !isAnyRemoteSession} onOpenChange={setResetListOpen}>
