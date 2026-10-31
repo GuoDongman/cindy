@@ -125,7 +125,14 @@ function matches(row: Schedule, input: CreateScheduleInput): boolean {
     && row.useWorktree === input.useWorktree
     && (row.workspaceKind ?? 'dialogue') === (input.workspaceKind ?? 'dialogue')
     && (row.persistentSession ?? false) === (input.persistentSession ?? false)
-    && (row.silentWhenIdle ?? false) === (input.silentWhenIdle ?? false);
+    && (row.silentWhenIdle ?? false) === (input.silentWhenIdle ?? false)
+    && same(row.effort, input.effort)
+    && same(row.fastMode, input.fastMode)
+    && same(row.expireAt, input.expireAt)
+    && same(row.modelAgentDeviceId, input.modelAgentDeviceId)
+    && (row.notify?.desktop ?? false) === (input.notify?.desktop ?? false)
+    && (row.notify?.feishu ?? false) === (input.notify?.feishu ?? false)
+    && (row.notify?.wecomGroup ?? false) === (input.notify?.wecomGroup ?? false);
 }
 
 async function existingDirectoryError(dir: string): Promise<string | null> {
@@ -145,14 +152,13 @@ async function resolveModel(
   source: Schedule,
 ): Promise<{ model?: string; providerId?: string } | { error: string }> {
   if (!source.model) return {};
-  if (isLocalDevice(targetDevice)) return { model: source.model, providerId: source.providerId };
   if (!deps.listModels) {
     return { error: '无法读取目标电脑的模型目录，拒绝复制可能无效的 model/providerId' };
   }
   const engine = source.modelAgentKind ?? source.agentKind;
   const listed = await deps.listModels({
     agent: engine,
-    agentDeviceId: targetDevice,
+    agentDeviceId: isLocalDevice(targetDevice) ? null : targetDevice,
   });
   if (!listed.ok) return { error: listed.message || '无法读取目标电脑的模型目录' };
   const key = engine === 'claude-code' ? 'claude_code' : engine;
@@ -185,6 +191,7 @@ function buildInput(
     ...(source.intervalMs !== undefined ? { intervalMs: source.intervalMs } : {}),
     agentKind: source.agentKind,
     ...(source.modelAgentKind ? { modelAgentKind: source.modelAgentKind } : {}),
+    ...(source.modelAgentDeviceId !== undefined ? { modelAgentDeviceId: source.modelAgentDeviceId } : {}),
     ...(model.model ? { model: model.model } : {}),
     ...(model.providerId ? { providerId: model.providerId } : {}),
     ...(source.effort ? { effort: source.effort } : {}),
@@ -256,6 +263,7 @@ export async function moveSchedule(deps: SchedulerMcpDeps, args: MoveArgs): Prom
   ];
 
   let createdId = args.adoptTargetId;
+  const createdHere = !args.adoptTargetId;
   if (!createdId) {
     const before = await listOn(deps, targetDevice);
     if (!before.ok) return failure(before.code, before.message, { sourceUntouched: true });
@@ -301,6 +309,14 @@ export async function moveSchedule(deps: SchedulerMcpDeps, args: MoveArgs): Prom
 
   const verified = await readOne(deps, targetDevice, createdId);
   if (!verified.ok) {
+    if (!createdHere) {
+      return failure(verified.code, '核对已有目标失败，没有改动该任务，也没有改动源任务。', {
+        sourceUntouched: true,
+        targetId: createdId,
+        targetPaused: false,
+        queryBeforeRetry: true,
+      });
+    }
     const rolledBack = await writeOn(deps, targetDevice, 'pause', [createdId]);
     return failure(verified.code, rolledBack.ok
       ? '目标已创建，但核对失败。已暂停目标副本，源任务未改。'
@@ -312,16 +328,40 @@ export async function moveSchedule(deps: SchedulerMcpDeps, args: MoveArgs): Prom
     });
   }
   if (!verified.data || !matches(verified.data, input)) {
+    if (createdHere) {
+      const rolledBack = await writeOn(deps, targetDevice, 'pause', [createdId]);
+      return failure('INVALID_PARAMS', rolledBack.ok
+        ? '新建目标与要迁移的定义不一致，已暂停该副本，源任务未改。'
+        : '新建目标与要迁移的定义不一致，暂停副本也没有确认。源任务未改。不要再次创建。', {
+        sourceUntouched: true,
+        targetId: createdId,
+        targetPaused: rolledBack.ok,
+        queryBeforeRetry: true,
+      });
+    }
     return failure('INVALID_PARAMS', 'adoptTargetId 与要迁移的任务不一致，没有改动源任务', {
       sourceUntouched: true,
       targetId: createdId,
+      targetPaused: false,
     });
   }
   if (verified.data.status !== 'active') {
+    if (createdHere) {
+      const rolledBack = await writeOn(deps, targetDevice, 'pause', [createdId]);
+      return failure('INVALID_PARAMS', rolledBack.ok
+        ? '新建目标还不是 active，已暂停该副本，源任务未改。'
+        : '新建目标还不是 active，暂停副本也没有确认。源任务未改。', {
+        sourceUntouched: true,
+        targetId: createdId,
+        targetStatus: verified.data.status,
+        targetPaused: rolledBack.ok,
+      });
+    }
     return failure('INVALID_PARAMS', '目标任务还不是 active，没有暂停或删除源任务', {
       sourceUntouched: true,
       targetId: createdId,
       targetStatus: verified.data.status,
+      targetPaused: false,
     });
   }
 
