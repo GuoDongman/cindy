@@ -499,9 +499,16 @@ App 为 active 的等待时间，`wallElapsedMs` 单独保留包含后台与离�
 （心动团队用 `com.xd.cindytest`，该 App ID 已有自动签名描述文件；临时新建的 ID 签名不可靠）：
 
 - 用临时 `self-host-regions.json` 覆盖 `iosBundleId`，通过 `CINDY_SELF_HOST_REGIONS_FILE`
-  指给构建；`EXPO_PUBLIC_APP_VARIANT=beta` 与 `EXPO_PUBLIC_BETA_DEV` 改显示名，一眼分得清。
+  指给构建，并同时设置 `CINDY_USE_LOCAL_REGION_CONFIG=1`：`app.config.js` 只有这个开关
+  （`mobile:sim:*` 脚本会自动设置）或自建发布线的 `EXPO_PUBLIC_XDT_OTA_SELFHOST=1` 打开时才读这份
+  文件，漏了开关会静默回落到内置包名，与正式版同 ID 冲突；后者还会改变原生 OTA 策略，测试包不要用。
+  `EXPO_PUBLIC_APP_VARIANT=beta` 与 `EXPO_PUBLIC_BETA_DEV` 只给显示名加「Beta (标记)」后缀，一眼
+  分得清，不改 bundle ID。安装前用 `plutil -extract CFBundleIdentifier raw -o - <.app>/Info.plist`
+  核对产物的 bundle ID 确实是测试 ID。
 - 测试 App ID 没有 app group，`CindyNotificationService` 扩展也没有通信通知能力：只在生成的
-  `ios/` 里删掉对应 entitlement（分享扩展、通知头像在测试版不可用），不改仓库里的配置。
+  `ios/` 里删掉对应 entitlement（`com.apple.security.application-groups` 与
+  `com.apple.developer.usernotifications.communication`；分享扩展、通知头像在测试版不可用），
+  不改仓库里的配置。
 - Xcode 27 需要 `SWIFT_ENABLE_EXPLICIT_MODULES=NO CLANG_ENABLE_EXPLICIT_MODULES=NO`
   （与 `scripts/build-ios.mjs` 相同），否则 WechatOpenSDK 模块解析失败。
 - 安装：`xcrun devicectl device install app --device <udid> <.app>`。
