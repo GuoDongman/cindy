@@ -1289,3 +1289,29 @@ it('adds shared counts to installed detail metadata while preserving author and 
   expect(container.textContent).toContain('1,284 settings.ghosts.usage.downloadsValue');
   expect(container.textContent).toContain('8,932 settings.ghosts.usage.usesValue');
 });
+
+// Chat files handed to a plugin: the user sees each 7-day copy and deletes one
+// only after confirming. Rule: plugin-security-and-authoring.md §4 handoff.
+// Gap: new local section. Tier: renderer unit with the shared confirm dialog.
+it('deletes one handed-over file only after confirmation', async () => {
+  const { ConfirmDialogProvider } = await import('@/components/ui/confirm-dialog-provider');
+  const { GhostHandoffFilesSection } = await import('../GhostHandoffFilesSection');
+  const file = (name: string, n: number) => ({ ref: `handoff:0000000${n}-0000-4000-8000-000000000000`, name, mimeType: 'text/csv', size: 2048, sha256: 'a'.repeat(64), createdAt: 1, expiresAt: 2 });
+  const [first, second] = [file('first.csv', 1), file('second.csv', 2)];
+  const handoffList = vi.fn().mockResolvedValueOnce([first, second]).mockResolvedValue([second]);
+  const handoffDelete = vi.fn(async () => ({ existed: true }));
+  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete } });
+  render(<ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>);
+
+  const row = (await screen.findByText('first.csv')).closest('li') as HTMLElement;
+  fireEvent.click(within(row).getByRole('button'));
+  fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'settings.ghosts.handoff.cancel' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(handoffDelete).not.toHaveBeenCalled();
+
+  fireEvent.click(within(row).getByRole('button'));
+  fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'settings.ghosts.handoff.delete' }));
+  await waitFor(() => expect(screen.queryByText('first.csv')).toBeNull());
+  expect(handoffDelete).toHaveBeenCalledExactlyOnceWith('art', first.ref);
+  expect(screen.getByText('second.csv')).toBeTruthy();
+});

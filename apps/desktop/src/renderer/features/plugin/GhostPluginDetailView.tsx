@@ -38,6 +38,7 @@ import { PluginUsageCard } from './PluginUsageCard';
 import { PluginSharedUsage } from './PluginSharedUsage';
 import type { PluginMarketItem } from '../../../shared/pluginMarket';
 import { GhostLibrarySection } from './GhostLibrarySection';
+import { GhostHandoffFilesSection } from './GhostHandoffFilesSection';
 import { PluginBackgroundTasksSection } from './PluginBackgroundTasksSection';
 import { PluginTaskPrefs } from '@/cindy-brain/PluginTaskPrefs';
 import { GhostSettingsWebview } from '@/cindy-brain/GhostSettingsWebview';
@@ -55,6 +56,7 @@ import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import {
   ghostDeclaresHiddenTasks,
+  ghostToolDeclaresHandoff,
   ghostTrustLabelKey,
   isUserInstallReservedGhostId,
   type GhostPermissionItem,
@@ -547,6 +549,12 @@ export function GhostPluginDetailView({
         ) : null}
 
         {!remote ? <GhostLibrarySection ghostId={detail.id} enabled={ghost?.manifest.library === true} /> : null}
+        {!remote ? (
+          <GhostHandoffFilesSection
+            ghostId={detail.id}
+            declared={(ghost?.manifest.tools ?? []).some((tool) => ghostToolDeclaresHandoff(tool))}
+          />
+        ) : null}
 
         {publishingSection}
 
