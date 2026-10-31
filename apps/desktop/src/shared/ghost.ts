@@ -15,7 +15,7 @@ import {
 } from '@cindy/plugin-protocol';
 import { PLUGIN_STORAGE_PART_RE } from './pluginStoragePartPattern.js';
 import { PLUGIN_TASK_PERMISSION_MODES } from './pluginTasks.js';
-import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type SupportedLocale } from './locale';
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, modernLocaleOf, type SupportedLocale } from './locale';
 
 /**
  * 意识(Ghost,.cindy 文件)的清单数据模型与校验 —— main / renderer 共用。
@@ -3557,6 +3557,11 @@ export function ghostAppContextLocale(locale: string | undefined | null): (typeo
   return (GHOST_APP_CONTEXT_LOCALES as readonly string[]).includes(locale ?? '')
     ? (locale as (typeof GHOST_APP_CONTEXT_LOCALES)[number])
     : 'en';
+}
+
+/** Shared by /app-context and host-context-changed; authored plugin resources use modern locales. */
+export function ghostAppContextLanguages(locale: SupportedLocale) {
+  return { locale: ghostAppContextLocale(locale), uiLocale: modernLocaleOf(locale) };
 }
 
 /** 把当前宿主语言附到运行时清单视图；不支持的输入固定归一到英文。 */
@@ -7530,7 +7535,7 @@ export interface GhostAppContextResult {
     region: GhostAppRegion;
     /** 插件协议语言；宿主新增语言会在边界回退英文。 */
     locale: ReturnType<typeof ghostAppContextLocale>;
-    /** Actual UI language; optional for compatibility with older hosts. */
+    /** Modern UI language for authored plugin resources; optional for older hosts. */
     uiLocale?: SupportedLocale;
   };
 }

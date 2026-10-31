@@ -10,6 +10,7 @@ import {
   deriveGhostSessionContext,
   diffGhostPermissionItems,
   ghostAppContextLocale,
+  ghostAppContextLanguages,
   ghostContentKeys,
   ghostExternalLinkUrls,
   ghostLocalePathFor,
@@ -561,6 +562,16 @@ describe('ghost · 清单校验', () => {
     expect(withGhostResolvedLocale(parsed.manifest, 'ko').resolvedLocale).toBe('ko');
     expect(withGhostResolvedLocale(parsed.manifest, 'zh-TW').resolvedLocale).toBe('zh-TW');
     expect(withGhostResolvedLocale(parsed.manifest, 'fr-FR').resolvedLocale).toBe('en');
+  });
+
+  // PR #8210: both plugin context transports must resolve classical UI locales to authored resources.
+  // Unit: the production context builder preserves the legacy field while exposing a modern uiLocale.
+  it.each([
+    ['zh-Hant-x-lzh', 'zh-TW'],
+    ['zh-Hans-x-lzh', 'zh-CN'],
+    ['fr', 'fr'],
+  ] as const)('maps plugin context %s to %s without changing the legacy locale', (locale, uiLocale) => {
+    expect(ghostAppContextLanguages(locale)).toEqual({ locale: 'en', uiLocale });
   });
 
   it('app-context locale 保持插件协议旧四语，新增宿主语言固定回退英文', () => {

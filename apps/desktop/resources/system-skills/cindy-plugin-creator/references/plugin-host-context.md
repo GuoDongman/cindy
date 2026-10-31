@@ -28,6 +28,7 @@ region 只适合选择**已在 manifest 声明过**的公开配置。例如 brok
 `BroadcastChannel` 通知同插件的设置页/panel 重新读取 `/app-context` 并换文案。
 未运行的插件会在下次启动或页面重新装载时直接读到新语言。
 `uiLocale` 支持 `zh-CN / zh-TW / en / ja / ko / es / fr / de / pt-PT / pt-BR`。
+文言界面 `zh-Hant-x-lzh` / `zh-Hans-x-lzh` 分别映射为 `zh-TW` / `zh-CN`，以匹配插件的现代中文资源。
 旧字段 `locale` 保留四语契约：这四种以外的语言会在插件边界固定映射为 `en`，保证存量插件无需改代码、
 重新安装或重新授权。旧宿主不返回 `uiLocale`，新插件使用上述空值回退即可兼容。
 插件自身不支持所选语言时必须选英文资源；宿主支持十语不代表第三方插件已经提供十语译文。
