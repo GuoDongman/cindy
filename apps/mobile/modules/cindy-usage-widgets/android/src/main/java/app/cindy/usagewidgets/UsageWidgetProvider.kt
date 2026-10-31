@@ -43,6 +43,8 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
   }
 
   companion object {
+    private const val MIN_DRAW_DENSITY = 0.3f
+
     const val ACTION_RENDER_PREVIEWS = "app.cindy.usagewidgets.RENDER_PREVIEWS"
 
     private fun renderPreviews(context: Context, variant: String, width: Float, height: Float) {
@@ -84,7 +86,14 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
     fun updateAll(context: Context) {
       val manager = AppWidgetManager.getInstance(context)
       for ((provider, kind) in listOf(QuotaWidgetProvider::class.java to WidgetKind.Quota, UsageWidgetProvider::class.java to WidgetKind.Usage)) {
-        for (id in manager.getAppWidgetIds(ComponentName(context, provider))) update(context, manager, id, kind)
+        for (id in manager.getAppWidgetIds(ComponentName(context, provider))) {
+          // One widget the launcher refuses must not stop the others from being redrawn.
+          try {
+            update(context, manager, id, kind)
+          } catch (_: Exception) {
+            // Drawn again at the next update.
+          }
+        }
       }
     }
 
@@ -120,7 +129,14 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
           .takeIf { it > 0 }?.toFloat() ?: 160f
         buildViews(context, kind, state, width, height, 1, now, pinnedCount)
       }
-      manager.updateAppWidget(appWidgetId, views)
+      try {
+        manager.updateAppWidget(appWidgetId, views)
+      } catch (_: IllegalArgumentException) {
+        // Still over the launcher's bitmap memory limit (it counts every size and both themes): one size, smaller.
+        val width = sizes?.firstOrNull()?.width ?: 160f
+        val height = sizes?.firstOrNull()?.height ?: 160f
+        manager.updateAppWidget(appWidgetId, buildViews(context, kind, state, width, height, 4, now, pinnedCount))
+      }
     }
 
     /** One drawing at one size: both themes as bitmaps, kept under the launcher's memory budget for `sharedBy` sizes. */
@@ -131,7 +147,8 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
       var density = metrics.density
       // A remote bitmap above the launcher's memory budget is rejected (two per size are sent, one per theme).
       val budget = metrics.widthPixels.toLong() * metrics.heightPixels * 4 * 3 / 2 / (2 * sharedBy)
-      while (width * density * height * density * 4 > budget && density > 1f) density -= 0.25f
+      // Below 1 px/dp when it has to be: a rejected update leaves the widget stale, a softer picture does not.
+      while (width * density * height * density * 4 > budget && density > MIN_DRAW_DENSITY) density *= 0.9f
       val views = RemoteViews(context.packageName, R.layout.cindy_usage_widget)
       val description = describe(context, kind, state)
       for ((dark, id) in listOf(false to R.id.cindy_usage_widget_image, true to R.id.cindy_usage_widget_image_dark)) {
