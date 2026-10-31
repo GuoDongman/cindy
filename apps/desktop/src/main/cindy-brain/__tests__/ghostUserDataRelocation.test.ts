@@ -66,7 +66,6 @@ beforeEach(() => {
     secrets: noOp, libraryBinding: noOp, libraryMeta: noOp,
     tasks: noOp,
     cindyPreferences: cindy.relocateGhostCindyPrefs,
-    controlPointPreferences: noOp,
     errandPreferences: errand.relocateGhostErrandPrefs,
     pickedDirectories: pick.relocateGhostPickedDirs,
     workdirPreferences: workdir.relocateGhostWorkdirPrefs,

@@ -18,7 +18,7 @@ import type { BrowserWindow } from 'electron';
 import { eq } from 'drizzle-orm';
 
 import { Scheduler } from '@cindy/maker-scheduler';
-import type { FireContext, FireResult, Logger, Schedule, ScheduleRunner } from '@cindy/maker-scheduler';
+import type { FireContext, FireResult, Logger, PreRunPluginConfig, Schedule, ScheduleRunner } from '@cindy/maker-scheduler';
 import type { GhostControlPointResult, GhostScheduleRunPointData } from '../../shared/ghost.js';
 import type { Maker } from '@cindy/maker-core';
 import type { FeishuIM } from '@cindy/im';
@@ -80,11 +80,17 @@ export interface StartSchedulerDeps {
   logger: Logger;
   beforeDispatchUserTurn?: (sessionId: string, signal?: AbortSignal) => void | Promise<void>;
   onUndispatchedUserTurn?: (sessionId: string) => void;
-  /** 插件控制节点 will-schedule-run：每次定时任务执行前(不含恢复中断的续跑)询问插件。 */
-  screenControlPoint?: (point: 'will-schedule-run', data: GhostScheduleRunPointData) => Promise<GhostControlPointResult>;
+  /** 插件控制节点 will-schedule-run：任务选了插件前置检查时，每次执行前(不含恢复中断的续跑)询问它。 */
+  screenControlPoint?: (
+    point: 'will-schedule-run',
+    data: GhostScheduleRunPointData,
+    target: PreRunPluginConfig,
+  ) => Promise<GhostControlPointResult>;
+  /** 保存插件前置检查时把插件解析为实例 id;插件不可选时抛错。 */
+  resolvePreRunPlugin?: (pluginId: string) => string;
 }
 
-/** 伙伴例行任务的承载任务由 will-routine-run 在更早处询问，这里不重复问。 */
+/** 伙伴例行任务的承载任务按例行任务自己的设置在更早处询问，这里不重复问。 */
 function isRoutineBackingSchedule(schedule: Schedule): boolean {
   return schedule.source === 'bot' && schedule.id.startsWith('routine-');
 }
@@ -94,7 +100,8 @@ async function screenScheduleRun(
   schedule: Schedule,
   ctx: FireContext,
 ): Promise<FireResult | null> {
-  if (ctx.resumeSessionId || isRoutineBackingSchedule(schedule)) return null;
+  const target = schedule.preRunPlugin;
+  if (!target || ctx.resumeSessionId || isRoutineBackingSchedule(schedule)) return null;
   const gate = await screen('will-schedule-run', {
     scheduleId: schedule.id,
     runId: ctx.runId,
@@ -103,11 +110,11 @@ async function screenScheduleRun(
     executionMode: schedule.executionMode === 'script' ? 'script' : 'agent',
     trigger: schedule.manual ? 'manual' : schedule.intervalMs ? 'interval' : schedule.recurring === false ? 'once' : 'cron',
     firedAt: ctx.firedAt,
-  });
+  }, target);
   if (ctx.signal.aborted) throw new DOMException('aborted', 'AbortError');
   if (gate.action === 'allow') return null;
   const who = gate.failure
-    ? `Plugin "${gate.ghostName}" did not answer in time; stopped by your failure setting`
+    ? `Plugin "${gate.ghostName}" was unavailable or did not answer; handled by this task's failure setting`
     : gate.reason ? `Stopped by plugin "${gate.ghostName}": ${gate.reason}` : `Stopped by plugin "${gate.ghostName}"`;
   if (gate.action === 'skip') return { sessionId: '', skipped: true, resultText: who };
   throw new Error(who);
@@ -216,7 +223,7 @@ async function startSchedulerInternal(deps: StartSchedulerDeps): Promise<Schedul
   const runner: ScheduleRunner = {
     fire: (schedule, ctx) =>
       withScheduleLock(schedule.id, ctx.signal, async () => {
-        // 所有定时任务(Agent / 脚本)的唯一入口：插件控制节点放在任何检查脚本、建任务之前。
+        // 所有定时任务(Agent / 脚本)的唯一入口：插件前置检查放在检查脚本、建任务之前。
         const stopped = deps.screenControlPoint ? await screenScheduleRun(deps.screenControlPoint, schedule, ctx) : null;
         if (stopped) return stopped;
         return schedule.executionMode === 'script'
@@ -246,6 +253,7 @@ async function startSchedulerInternal(deps: StartSchedulerDeps): Promise<Schedul
     // 对话工作区根目录(userData/dialogues)下的路径都是 app 内部分配的会话 cwd。
     // agent 在对话里建任务时常把自己的 cwd 当 workingDir 传入 —— 引擎据此归一成
     // 对话任务,避免任务/会话错误归入项目分组。path.relative 同时兼容两端分隔符。
+    resolvePreRunPlugin: deps.resolvePreRunPlugin,
     isManagedWorkspaceDir: (dir) => {
       return dialogueWorkspaceRoots().some((root) => {
         const rel = path.relative(root, dir);

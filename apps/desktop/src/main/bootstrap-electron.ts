@@ -1163,6 +1163,7 @@ import {
   waitForGhostMutations,
   getGhostBrowserExtensionSlot,
   screenGhostControlPoint,
+  resolveGhostControlPointPlugin,
 } from './cindy-brain/index.js';
 import { setCodexImageAuthBinding } from './cindy-brain/codexImageAuthBinding.js';
 import { configureMailAttachmentHost } from './cindy-brain/mailAttachmentUpload.js';
@@ -1271,6 +1272,7 @@ configureRoutineHost({
   getScheduler: getSchedulerIfInitialized,
   getScheduleStorage,
   screenControlPoint: screenGhostControlPoint,
+  resolvePreRunPlugin: resolveGhostControlPointPlugin,
 });
 // 伙伴自主跟进：跟随例行任务引擎生命周期（引擎每次创建后重新登记 host:sessions 事件源）。
 configureBotAutonomyHost({ getMainWindow: () => mainWindowRef });
@@ -1351,6 +1353,7 @@ async function attemptStartSchedulerOnce(): Promise<void> {
       logger: createSchedulerLogger('scheduler-host'),
       ...automationGitBaselineHooks,
       screenControlPoint: screenGhostControlPoint,
+      resolvePreRunPlugin: (pluginId) => resolveGhostControlPointPlugin('will-schedule-run', pluginId),
     });
     // startScheduler fences resets while its async startup is in flight. Keep
     // the boundary check immediately before listener publication as a second

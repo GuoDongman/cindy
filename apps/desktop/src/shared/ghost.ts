@@ -685,10 +685,11 @@ export type GhostMessageHook = (typeof GHOST_MESSAGE_HOOKS)[number];
  * 运行时用 `host-request {kind:'control-points'}` 查询，新插件不需要 Host 再发版。
  * 与消息钩子共用 hookId + event-verdict 协议，差异：
  * - 插件只能收紧：`allow` 只表示"不反对"，不能替用户批准本来需要确认的事；
- * - 出错(超时/崩溃/熔断)怎么办由用户按节点设置(onFailure)，插件不能自报；
- * - 只有用户在安装/更新确认里看到过的节点才生效(receipt approvedControlPoints)，
+ * - 只问用户在该任务里选定的插件(任务的 preRunPlugin)，不是装了就管所有任务；
+ * - 出错(没装/停用/超时/崩溃/熔断)怎么办由用户在任务里设置(onFailure)，插件不能自报；
+ * - 只有用户在安装/更新确认里看到过的节点才可被选用(receipt approvedControlPoints)，
  *   防止插件提前写上 Host 还不认识的节点名、Host 升级后静默获得拦截权。
- * 新增节点 = 在本目录加一项 + 在 Host 对应流程调用 screenControlPoint。
+ * 新增节点 = 在本目录加一项 + 在 Host 对应流程按任务配置调用 screenControlPoint。
  */
 export const GHOST_CONTROL_POINT_FAILURE_ACTIONS = ['allow', 'skip', 'block'] as const;
 export type GhostControlPointFailureAction = (typeof GHOST_CONTROL_POINT_FAILURE_ACTIONS)[number];
@@ -698,7 +699,7 @@ export interface GhostControlPointSpec {
   actions: readonly ('allow' | 'skip' | 'block')[];
   /** 用户可选的出错处理。 */
   failureActions: readonly GhostControlPointFailureAction[];
-  /** 用户未设置时的出错处理；保持升级前行为(放行)。 */
+  /** 任务编辑页的默认出错处理；与脚本前置检查一致，出错即停止并记为失败。 */
   defaultOnFailure: GhostControlPointFailureAction;
   /** 单个插件的裁决时限(含按需唤醒)。 */
   timeoutMs: number;
@@ -712,7 +713,7 @@ export const GHOST_CONTROL_POINTS = {
   'will-schedule-run': {
     actions: ['allow', 'skip', 'block'],
     failureActions: ['allow', 'skip', 'block'],
-    defaultOnFailure: 'allow',
+    defaultOnFailure: 'block',
     timeoutMs: 30_000,
     permissionKey: 'subscribe:hooks:schedule-run',
     labelKey: 'subscribeScheduleRun',
@@ -721,7 +722,7 @@ export const GHOST_CONTROL_POINTS = {
   'will-routine-run': {
     actions: ['allow', 'skip', 'block'],
     failureActions: ['allow', 'skip', 'block'],
-    defaultOnFailure: 'allow',
+    defaultOnFailure: 'block',
     timeoutMs: 30_000,
     permissionKey: 'subscribe:hooks:routine-run',
     labelKey: 'subscribeRoutineRun',
@@ -6857,9 +6858,11 @@ export type GhostPipeHostRequest =
       kind: 'control-points';
     };
 
-/** 插件详情页的控制节点行(Host 界面用，含可选的出错处理)。 */
-export interface GhostControlPointSetting extends GhostControlPointInfo {
-  failureActions: readonly GhostControlPointFailureAction[];
+/** 任务「前置检查」可选的插件(Host 界面用)。 */
+export interface GhostControlPointCandidate {
+  /** 插件实例 id,任务里保存的就是它。 */
+  pluginId: string;
+  name: string;
 }
 
 /** `host-request {kind:'control-points'}` 的单项。 */
@@ -6869,10 +6872,8 @@ export interface GhostControlPointInfo {
   timeoutMs: number;
   /** 本插件 manifest 是否声明了该节点。 */
   declared: boolean;
-  /** 声明且用户已在安装/更新确认里批准，Host 会实际询问本插件。 */
+  /** 声明且用户已在安装/更新确认里批准；用户在任务里选了本插件时 Host 才会询问。 */
   active: boolean;
-  /** 本插件出错时用户选的处理(插件只读)。 */
-  onFailure: GhostControlPointFailureAction;
 }
 
 /** Replaces only the calling plugin's catalog; never starts a task. */
@@ -8696,8 +8697,8 @@ export interface GhostRoutineRunPointData {
 export type GhostControlPointData = GhostScheduleRunPointData | GhostRoutineRunPointData;
 
 /**
- * 控制节点裁决结果(宿主消费)。allow = 所有插件都不反对；skip/block 由第一个
- * 表态的插件给出，或插件出错时按用户设置得出(failure: true)。
+ * 控制节点裁决结果(宿主消费)。allow = 任务选定的插件不反对；skip/block 由该插件
+ * 给出，或插件出错时按任务的出错处理得出(failure: true)。
  */
 export type GhostControlPointResult =
   | { action: 'allow' }
@@ -8835,7 +8836,7 @@ export type GhostPipeEventPush =
 export interface GhostPipeEventVerdict {
   type: 'event-verdict';
   hookId: string;
-  action: 'allow' | 'block' | 'rewrite' | 'render';
+  action: 'allow' | 'block' | 'rewrite' | 'render' | 'skip';
   /** block 时展示的理由。 */
   reason?: string;
   /** rewrite 时的新正文(替换消息正文;其它 action 忽略)。 */

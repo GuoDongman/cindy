@@ -52,7 +52,7 @@ import {
 import { isGhostOwnerScopeUsable, type GhostOwnerScope } from './ghostOwnerScope.js';
 import { getDbClient } from '../localDb/client/current.js';
 import * as localDbSchema from '../localDb/schema.js';
-import { installedGhostStoragePart } from '../../shared/pluginIdentity.js';
+import { findInstalledGhostByInstanceId, installedGhostStoragePart } from '../../shared/pluginIdentity.js';
 
 /** block 理由展示上限(超长截断,防意识用理由塞小作文)。 */
 const BLOCK_REASON_MAX_CHARS = 200;
@@ -512,51 +512,45 @@ export class GhostSubscriptionGateway {
   }
 
   /**
-   * 控制节点询问(will-schedule-run / will-routine-run …)。按装入序串行询问在该节点
-   * 生效的插件(声明 + 用户确认过)；第一个 skip/block 即短路。插件只能收紧：allow 只是
-   * "不反对"。插件超时、崩溃或已熔断时按 failureAction(用户设置)处理，插件不能自报。
-   * 本方法异常不外抛，调用方据结果决定是否继续。
+   * 控制节点询问(will-schedule-run / will-routine-run …)。只问该任务选定的那个插件
+   * (任务里的 preRunPlugin);插件只能收紧：allow 只是"不反对"。插件没装、已停用、
+   * 没声明或用户没批准该节点，以及超时、崩溃、已熔断，都按任务的 onFailure 处理，
+   * 插件不能自报。本方法异常不外抛，调用方据结果决定是否继续。
    */
   async screenControlPoint(
     point: GhostControlPointId,
     data: GhostControlPointData,
-    failureAction: (ghostId: string) => GhostControlPointFailureAction,
+    target: { pluginId: string; onFailure: GhostControlPointFailureAction },
   ): Promise<GhostControlPointResult> {
     const ownerScope = this.captureOwnerScope();
     if (!this.ownerScopeUsable(ownerScope)) return { action: 'allow' };
     const spec = GHOST_CONTROL_POINTS[point];
-    for (const ghost of this.deps.listGhosts()) {
-      if (!ghostControlPointActive(ghost, point)) continue;
-      const ghostId = installedGhostStoragePart(ghost);
-      const e = this.entry(ghostId);
-      const verdict = e.pointFused ? null : await this.askControlPoint(ghost, e, point, data, spec.timeoutMs, ownerScope);
-      if (!this.ownerScopeUsable(ownerScope)) return { action: 'allow' };
-      if (verdict === null) {
-        let onFailure: GhostControlPointFailureAction = spec.defaultOnFailure;
-        try {
-          onFailure = failureAction(ghostId);
-        } catch (error) {
-          this.deps.log?.warn('control point failure policy unreadable; using default', {
-            ghostId, point, error: error instanceof Error ? error.message : String(error),
-          });
-        }
-        this.deps.log?.warn('control point unanswered', { ghostId, point, onFailure, fused: e.pointFused });
-        if (onFailure === 'allow') continue;
-        return { action: onFailure, ghostId, ghostName: ghost.manifest.name, reason: '', failure: true };
-      }
-      if ((verdict.action === 'skip' || verdict.action === 'block') &&
-          (spec.actions as readonly string[]).includes(verdict.action)) {
-        this.deps.log?.info('control point stopped', { ghostId, point, action: verdict.action });
-        return {
-          action: verdict.action,
-          ghostId,
-          ghostName: ghost.manifest.name,
-          reason: (verdict.reason ?? '').slice(0, BLOCK_REASON_MAX_CHARS),
-          failure: false,
-        };
-      }
-      // allow 与本节点不支持的动作(rewrite/render)都只算不反对。
+    const ghost = findInstalledGhostByInstanceId(this.deps.listGhosts(), target.pluginId);
+    const failed = (ghostId: string, ghostName: string, why: string): GhostControlPointResult => {
+      this.deps.log?.warn('control point unanswered', { ghostId, point, onFailure: target.onFailure, why });
+      if (target.onFailure === 'allow') return { action: 'allow' };
+      return { action: target.onFailure, ghostId, ghostName, reason: '', failure: true };
+    };
+    if (!ghost || !ghostControlPointActive(ghost, point)) {
+      return failed(target.pluginId, ghost?.manifest.name ?? target.pluginId, ghost ? 'inactive' : 'missing');
     }
+    const ghostId = installedGhostStoragePart(ghost);
+    const e = this.entry(ghostId);
+    const verdict = e.pointFused ? null : await this.askControlPoint(ghost, e, point, data, spec.timeoutMs, ownerScope);
+    if (!this.ownerScopeUsable(ownerScope)) return { action: 'allow' };
+    if (verdict === null) return failed(ghostId, ghost.manifest.name, e.pointFused ? 'fused' : 'unanswered');
+    if ((verdict.action === 'skip' || verdict.action === 'block') &&
+        (spec.actions as readonly string[]).includes(verdict.action)) {
+      this.deps.log?.info('control point stopped', { ghostId, point, action: verdict.action });
+      return {
+        action: verdict.action,
+        ghostId,
+        ghostName: ghost.manifest.name,
+        reason: (verdict.reason ?? '').slice(0, BLOCK_REASON_MAX_CHARS),
+        failure: false,
+      };
+    }
+    // allow 与本节点不支持的动作(rewrite/render)都只算不反对。
     return { action: 'allow' };
   }
 

@@ -5,7 +5,7 @@ import { createWallpaperAssetsBridge } from './wallpaperAssets';
 import type { CompanionImportApi, CompanionImportSelection } from '@cindy/maker-shared/companion-import';
 import { TASK_MIGRATION_LOCAL_CHANNEL } from '@cindy/device-link';
 import type { WorktreeRecycleAction, WorktreeRecycleStatus } from '../shared/worktreeRecycle';
-import type { GhostControlPointSetting } from '../shared/ghost';
+import type { GhostControlPointCandidate, GhostControlPointInfo } from '../shared/ghost';
 import {
   FAVORITE_HOST_READY,
   FAVORITE_HOST_REQUEST,
@@ -1463,11 +1463,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     requestUiApproval: (id: string): Promise<{ granted: boolean }> => ipcRenderer.invoke('ghosts:request-ui-approval', id),
     requestTaskApproval: (id: string): Promise<{ granted: boolean }> =>
       ipcRenderer.invoke('ghosts:request-task-approval', id),
-    /** 本插件声明的控制节点(拦截点)与出错处理设置。 */
-    getControlPoints: (id: string): Promise<GhostControlPointSetting[]> =>
+    /** 本插件声明的控制节点(运行前检查)与生效状态。 */
+    getControlPoints: (id: string): Promise<GhostControlPointInfo[]> =>
       ipcRenderer.invoke('ghosts:control-points:get', id),
-    setControlPointFailure: (id: string, point: string, action: 'allow' | 'skip' | 'block' | null): Promise<void> =>
-      ipcRenderer.invoke('ghosts:control-points:set-failure', id, point, action),
+    /** 任务「前置检查」可选的插件(仅本机窗口,不进 device-link)。 */
+    listControlPointCandidates: (point: 'will-schedule-run' | 'will-routine-run'): Promise<GhostControlPointCandidate[]> =>
+      ipcRenderer.invoke('ghosts:control-points:candidates', point),
     /** 详情页「后台任务」:本插件转入后台的任务(仅本机窗口,不进 device-link)。 */
     listBackgroundTasks: (id: string): Promise<{
       items: Array<{ taskId: string; title: string; status: 'active' | 'archived'; updatedAt: number; running: boolean }>;
