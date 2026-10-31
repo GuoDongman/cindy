@@ -5,6 +5,7 @@ import { createWallpaperAssetsBridge } from './wallpaperAssets';
 import type { CompanionImportApi, CompanionImportSelection } from '@cindy/maker-shared/companion-import';
 import { TASK_MIGRATION_LOCAL_CHANNEL } from '@cindy/device-link';
 import type { WorktreeRecycleAction, WorktreeRecycleStatus } from '../shared/worktreeRecycle';
+import type { GhostControlPointCandidate, GhostControlPointInfo } from '../shared/ghost';
 import {
   FAVORITE_HOST_READY,
   FAVORITE_HOST_REQUEST,
@@ -616,6 +617,7 @@ const fanOutPluginUpdateConsentHoldsChanged = createIpcFanOut(
 // #37: release 端检测到 schema drift 时一次性 toast 提示开发者切回 dev 自动修复
 const fanOutSchemaDriftWarning = createIpcFanOut('local-db:schema-drift-warning');
 const fanOutProjectAliasesChanged = createIpcFanOut('local-db:project-aliases:changed');
+const fanOutSessionImportProgress = createIpcFanOut('session-import:progress');
 const fanOutSidebarPinnedOrderChanged = createIpcFanOut('sidebar-settings:pinned-order-changed');
 const fanOutSidebarHiddenProjectKeysChanged = createIpcFanOut(
   'sidebar-settings:hidden-project-keys-changed',
@@ -1241,6 +1243,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }),
   setApplicationMenuLocale: (locale: ApplicationMenuLocale): Promise<{ ok: true }> =>
     ipcRenderer.invoke('app-menu:set-locale', locale),
+  // 文言等古典界面下 AI 作答的输出风格（只影响本机发起的轮次）。
+  setClassicalReplyStyle: (style: string): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('app-locale:set-classical-style', style),
 
   // 主进程兜底 catch 到瞬时网络错误时推一次 (lifecycle.ts), payload: { code, address?, port? }。
   // 节流由 renderer 侧 (systemNetworkErrorToast.ts) 负责, 这里只透传, 不去重。
@@ -1456,8 +1461,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     uiPrompts: (): Promise<Array<{id: string; name: string; version: string}>> => ipcRenderer.invoke('ghosts:ui-prompts'),
     deferUiPrompt: (id: string, version: string): Promise<void> => ipcRenderer.invoke('ghosts:defer-ui-prompt', id, version),
     requestUiApproval: (id: string): Promise<{ granted: boolean }> => ipcRenderer.invoke('ghosts:request-ui-approval', id),
-    requestTaskApproval: (id: string): Promise<{ granted: boolean }> =>
-      ipcRenderer.invoke('ghosts:request-task-approval', id),
+    requestTaskApproval: (id: string, capability?: 'observe'): Promise<{ granted: boolean }> =>
+      ipcRenderer.invoke('ghosts:request-task-approval', id, capability),
+    /** 本插件声明的控制节点(运行前检查)与生效状态。 */
+    getControlPoints: (id: string): Promise<GhostControlPointInfo[]> =>
+      ipcRenderer.invoke('ghosts:control-points:get', id),
+    /** 任务「前置检查」可选的插件(仅本机窗口,不进 device-link)。 */
+    listControlPointCandidates: (point: 'will-schedule-run' | 'will-routine-run'): Promise<GhostControlPointCandidate[]> =>
+      ipcRenderer.invoke('ghosts:control-points:candidates', point),
     /** 详情页「后台任务」:本插件转入后台的任务(仅本机窗口,不进 device-link)。 */
     listBackgroundTasks: (id: string): Promise<{
       items: Array<{ taskId: string; title: string; status: 'active' | 'archived'; updatedAt: number; running: boolean }>;
@@ -1602,6 +1613,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearUsage: (subjectId: string | null): Promise<void> => ipcRenderer.invoke('ghosts:usage-clear', subjectId),
     libraryOverview: (id: string): Promise<import('../shared/ghost').GhostLibraryOverview> =>
       ipcRenderer.invoke('ghosts:library-overview', id),
+    handoffList: (id: string): Promise<import('../shared/ghost').GhostHandoffFile[]> =>
+      ipcRenderer.invoke('ghosts:handoff-list', id),
+    handoffFolder: (id: string): Promise<string | null> => ipcRenderer.invoke('ghosts:handoff-folder', id),
+    handoffDelete: (id: string, ref: string): Promise<{ existed: boolean }> =>
+      ipcRenderer.invoke('ghosts:handoff-delete', id, ref),
     libraryPickLocation: (
       id: string,
     ): Promise<{
@@ -4089,7 +4105,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         | { type: 'provider-share-join'; link: string }
         | { type: 'chat-invite'; token: string }
         | { type: 'chat-invite-malformed' }
-        | { type: 'settings'; tab: 'voice-input' | 'providers' | 'remote-control'; connect?: string },
+        | { type: 'settings'; tab: 'voice-input' | 'providers' | 'remote-control' | 'builtin-tools'; connect?: string },
     ) => void,
   ): (() => void) =>
     fanOutDeepLinkNavigate((payload) => {
@@ -4143,7 +4159,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         && [p.groupId, p.messageId, ...(p.threadRootId === undefined ? [] : [p.threadRootId])].every(value => typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value))) {
         callback({ type: 'chat-message', groupId: p.groupId, messageId: p.messageId,
           ...(typeof p.threadRootId === 'string' ? { threadRootId: p.threadRootId } : {}) });
-      } else if (p.type === 'settings' && (p.tab === 'voice-input' || p.tab === 'providers' || p.tab === 'remote-control')) {
+      } else if (p.type === 'settings' && (p.tab === 'voice-input' || p.tab === 'providers' || p.tab === 'remote-control' || p.tab === 'builtin-tools')) {
         // connect 只对 providers 页有意义;主进程已做 id 白名单,这里按纵深防御
         // 原样复用同一规则。字段存在但不合法时丢弃整个 payload,不降级成半执行。
         if (
@@ -4213,7 +4229,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     | { type: 'provider-share-join'; link: string }
     | { type: 'chat-invite'; token: string }
     | { type: 'chat-invite-malformed' }
-    | { type: 'settings'; tab: 'voice-input' | 'providers' | 'remote-control'; connect?: string }
+    | { type: 'settings'; tab: 'voice-input' | 'providers' | 'remote-control' | 'builtin-tools'; connect?: string }
     | null
   > => ipcRenderer.invoke('deep-link:take-pending'),
 
@@ -6081,11 +6097,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sessionImport: {
       scan: (request?: { force?: boolean }): Promise<unknown> =>
         ipcRenderer.invoke('local-db:session-import:scan', request),
-      importSelected: (
-        items: Array<{ source: 'codex' | 'claude'; id: string }>,
-      ): Promise<unknown> => ipcRenderer.invoke('local-db:session-import:import', { items }),
-      linkCodexProject: (workingDir: string): Promise<unknown> =>
-        ipcRenderer.invoke('local-db:session-import:link-codex-project', { workingDir }),
+      start: (keys: string[]): Promise<unknown> =>
+        ipcRenderer.invoke('local-db:session-import:start', { keys }),
+      status: (requestId?: string): Promise<unknown> =>
+        ipcRenderer.invoke('local-db:session-import:status', { requestId }),
+      cancel: (requestId: string): Promise<unknown> =>
+        ipcRenderer.invoke('local-db:session-import:cancel', { requestId }),
+      relocate: (sessionId: string, workingDir: string): Promise<unknown> =>
+        ipcRenderer.invoke('local-db:session-import:relocate', { sessionId, workingDir }),
+      onProgress: (cb: (view: unknown) => void) => fanOutSessionImportProgress(cb as IpcCallback),
     },
     sessionShare: {
       /** 导出会话为 .cshare(main 弹保存对话框;password 可选,不落日志)。 */

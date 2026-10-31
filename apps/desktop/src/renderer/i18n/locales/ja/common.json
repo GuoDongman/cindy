@@ -240,6 +240,7 @@
     "estimateTooManyFiles": "プロジェクトのファイルが {{limit, number}} 個を超えているため、コピーできません。ファイル数の少ないプロジェクトをコピーしてください。"
   },
   "sharedTask": {
+    "officialRelayNote": "自分のリレーを使用中です。共有タスクの内容は引き続き Cindy 公式リレーを経由します。",
     "selfJoin": "これは自分が開始した共有タスクのため、参加する必要はありません。「自分が共有中」から開いてください。",
     "manageSharing": "共有管理",
     "manageMembers": "メンバーを管理…",
@@ -341,6 +342,7 @@
     "closeAllDescription": "すべてのゲストがアクセスできなくなります。タスクの履歴は保持されます。"
   },
   "providerShare": {
+    "officialRelayNote": "自分のリレーを使用中です。プロバイダー共有の内容は引き続き Cindy 公式リレーを経由します。",
     "owned": {
       "title": "自分が共有したプロバイダー"
     },
@@ -1088,7 +1090,8 @@
     "allow": "リモートデスクトップを許可",
     "allowHint": "同じアカウントのデバイスから、このコンピューターの全アプリの表示と操作を許可します。上のデバイス操作も有効にしてください。",
     "permissionHint": "コンピューターのシステム設定で画面収録とアクセシビリティを許可し、再接続してください。",
-    "controlUnavailable": "リモートコンピューターで操作を受け付けられません。操作権限と接続を確認して再接続してください。",
+    "inputUnsupported": "このパソコンの現在のデスクトップ環境では、Cindy によるキーボードとマウスの遠隔操作に対応していません。",
+    "controlUnavailable": "キーボードとマウスの遠隔操作を現在利用できません。再接続してください。",
     "beingControlled": "デスクトップが操作されています",
     "beingViewed": "デスクトップが表示されています",
     "controlledByDevice": "{{name}} がデスクトップを操作しています",
@@ -2383,7 +2386,35 @@
         "zh-TW": "繁體中文",
         "en": "English",
         "ja": "日本語",
-        "ko": "한국어"
+        "ko": "한국어",
+        "es": "Español",
+        "fr": "Français",
+        "de": "Deutsch",
+        "pt-PT": "Português (Portugal)",
+        "pt-BR": "Português (Brasil)",
+        "classical": "文言"
+      },
+      "classical": {
+        "label": "字体と文体",
+        "hint": "AI は選んだ文体で回答します。「通常の回答」では画面は文言のまま、回答はあなたの言語に合わせます。",
+        "scriptAriaLabel": "文言の字体",
+        "styleAriaLabel": "AI の回答文体",
+        "script": {
+          "hans": "简体",
+          "hant": "繁體"
+        },
+        "styles": {
+          "prose": "文言文（既定）",
+          "tang-poetry": "唐詩",
+          "song-ci": "宋詞",
+          "yuan-qu": "元曲",
+          "chu-ci": "楚辞",
+          "parallel-prose": "駢文",
+          "pre-qin": "先秦諸子",
+          "historian": "史伝",
+          "ming-qing-essay": "明清小品",
+          "plain": "通常の回答"
+        }
       }
     },
     "userProfile": {
@@ -3125,49 +3156,89 @@
       }
     },
     "sessionImport": {
-      "title": "ローカルセッションのインポート",
-      "description": "ローカルの Claude Code / Codex 履歴を読み取り専用でスキャンします。リストでチェックしたセッションのみインポートされ、スキップされた内部セッションは表示されず、インポートもされません。",
-      "scan": "スキャン",
-      "scanning": "スキャン中",
-      "emptyTitle": "まずローカル履歴をスキャン",
-      "emptyDescription": "スキャンはデータベースに書き込まず、サイドバーも変更しません。",
-      "noCandidates": "現在のフィルタではインポート可能なセッションがありません。",
-      "collapse": "グループを折りたたむ",
-      "expand": "グループを展開",
-      "selectGroup": "グループ全体を選択",
-      "sessions": "件のセッション",
-      "selected": "{{count}} 件選択中",
-      "importSelected": "選択をインポート",
-      "importing": "インポート中",
+      "title": "セッションのインポート",
+      "description": "ほかの AI コーディングツールのセッションを Cindy に取り込んで、そのまま続けられます。元の記録は読み取るだけで、変更しません。",
+      "rescan": "再スキャン",
+      "allSources": "すべてのソース",
+      "search": "セッションまたはフォルダを検索",
+      "projectFilter": "{{name}} のみ",
+      "clearProjectFilter": "すべてのプロジェクトを表示",
+      "hiddenCount_other": "{{count}} 件を非表示",
+      "hidden": {
+        "head": "一覧にないもの",
+        "hint": "チェックしたものは一覧に表示されます",
+        "cindy": "Cindy 自身が実行したセッション",
+        "temp": "一時フォルダ内のセッション",
+        "internal": "Agent の内部セッション（自動レビュー、サブ Agent）",
+        "imported": "インポート済み",
+        "sourceError": "{{name}} の記録を読み取れません"
+      },
+      "missingDir": "元のフォルダなし",
+      "groupTasks_other": "{{count}} 件",
+      "dialogue": "会話",
       "archived": "アーカイブ済み",
+      "unsupported": "未対応の形式",
       "untitled": "無題のセッション",
-      "noWorkingDir": "作業ディレクトリなし",
-      "summary": {
-        "total": "表示中",
-        "totalHint": "インポート対象として選択可能",
-        "projects": "既存プロジェクトのセッション",
-        "projectsHint": "現在のサイドバーのプロジェクトに属するセッション",
-        "dialogue": "新規フォルダーのセッション",
-        "dialogueHint": "プロジェクトグループを作成するセッション",
-        "filtered": "スキップ済み",
-        "filteredHint": "内部セッション、または既にアプリ内に存在"
+      "selectAll": "すべて選択",
+      "selectGroup": "グループ全体を選択",
+      "expand": "展開",
+      "collapse": "折りたたむ",
+      "selectedSummary_other": "{{count}} 件を選択中 · {{size}}",
+      "pickHint": "Cindy に取り込むセッションを選んでください",
+      "importCount_other": "{{count}} 件をインポート",
+      "import": "インポート",
+      "scanning": "このコンピューターのセッションを探しています…",
+      "scanFailed": "スキャンが完了しませんでした。もう一度お試しください。",
+      "emptyTitle": "このコンピューターにインポートできるセッションはありません",
+      "emptyDescription": "Cindy は以下のツールのセッションをインポートできます。ツールを使ったあとで、もう一度スキャンしてください。",
+      "noMatch": "条件に合うセッションはありません",
+      "allHidden": "すべて非表示になっています。右上の「非表示」から表示できます。",
+      "confirm": {
+        "title_other": "{{count}} 件のセッションをインポートしますか？",
+        "body": "およそ {{minutes}} 分かかり、最大 {{size}} のディスク容量を使います。バックグラウンドで進み、いつでも停止できます。インポート済みのものは残ります。",
+        "cancel": "キャンセル"
       },
-      "filters": {
-        "source": "ソース",
-        "placement": "配置",
-        "all": "すべて",
-        "codex": "Codex",
-        "claude": "Claude",
-        "project": "既存プロジェクト",
-        "dialogue": "新規フォルダー"
+      "progress": {
+        "title_other": "{{count}} 件のセッションをインポート中",
+        "background": "このページを離れても、インポートはバックグラウンドで続きます。",
+        "stop": "停止",
+        "queued": "待機中",
+        "copy": "元の記録をコピー中",
+        "messages_other": "{{count}} 件のメッセージを保存中",
+        "verify": "続けられるか確認中"
       },
-      "toast": {
-        "scanFailed": "スキャンに失敗しました",
-        "importFailed": "インポートに失敗しました",
-        "imported": "インポート完了:新規 {{inserted}} 件、更新 {{updated}} 件"
+      "result": {
+        "title_other": "{{count}} 件のセッションをインポートしました",
+        "stoppedTitle": "インポートを停止しました",
+        "ready_other": "{{count}} 件はすぐ続けられます",
+        "action_other": "{{count}} 件は対応が必要です",
+        "failed_other": "{{count}} 件は失敗しました",
+        "readyGroup": "すぐ続けられる（{{count}}）",
+        "readyNative": "続けられます。{{harness}} でそのまま続行",
+        "readyHandoff": "続けられます。{{harness}} が引き継ぎ、いつでも切り替え可能",
+        "missingDir": "元のフォルダがありません。フォルダを選ぶと続けられます。",
+        "chooseFolder": "フォルダを選択",
+        "relocateFailed": "このフォルダに切り替えられませんでした。もう一度お試しください。",
+        "cancelled": "インポート前に停止しました",
+        "retry": "再試行",
+        "open": "開く",
+        "done": "完了"
       },
-      "selectAll": "現在の絞り込み結果をすべて選択（{{count}}件）",
-      "selectedOutsideFilter": "（うち{{count}}件は現在の絞り込み対象外）"
+      "failure": {
+        "read-failed": "インポートできませんでした：元の記録を読み取れません",
+        "unsupported-version": "インポートできませんでした：このバージョンの記録形式にはまだ対応していません",
+        "empty": "インポートできませんでした：元の記録にメッセージがありません",
+        "not-found": "インポートできませんでした：元の記録が見つかりません",
+        "disk-full": "インポートできませんでした：ディスクの空き容量が足りません",
+        "native-unloadable": "インポートできませんでした：元の記録を読み込めません"
+      },
+      "marker": {
+        "from": "{{source}} からインポート · {{date}}",
+        "folder": "元のフォルダ {{path}}",
+        "end": "ここまでは {{source}} からインポートした記録です",
+        "endHandoff": "ここまでは {{source}} からインポートした記録です。ここから {{harness}} が続けます。"
+      },
+      "projectMenu": "このプロジェクトのほかのツールのセッションをインポート…"
     },
     "connections": {
       "codex": {
@@ -3604,6 +3675,7 @@
           "nameRequired": "表示名を入力してください",
           "runtimeRequired": "Runtime を 1 つ以上設定してください（ベース URL とモデル）",
           "baseUrlInvalid": "ベース URL は有効な http(s) アドレスである必要があります",
+          "baseUrlRequired": "この Runtime のベース URL を入力するか、プロトコルを既定に戻してください",
           "contextWindowInvalid": "コンテキストウィンドウは有効な正の整数である必要があります（数字グループの間に区切り記号を使用できます）",
           "requestPathInvalid": "正確なリクエストパスは 1 つの / で始め、フラグメントや .、.. のパスセグメントを含めないでください。空白や安全でない文字はパーセントエンコードしてください。",
           "modelRequired": "モデルを 1 つ以上追加してください",
@@ -5675,7 +5747,7 @@
         "current": "使用中",
         "ownerName": "このコンピュータ",
         "unavailable": "自分のリレーを使うには、Cindy にサインインし、システムのキーチェーンが使える必要があります。",
-        "limits": "自分のリレーを使っている間は、スマホのプッシュ通知、プロバイダー共有、共有タスクは使えません。",
+        "limits": "自分のリレーを使っている間は、スマホのプッシュ通知は使えません。プロバイダー共有と共有タスクは引き続き Cindy 公式リレーを経由します。",
         "actions": {
           "join": "別のリレーに参加",
           "useOfficial": "公式リレーに戻す",
@@ -5891,7 +5963,7 @@
           "switchFromHost": "このコンピュータのリレーは停止し、参加しているデバイスは切断されます。",
           "switchFromMember": "このコンピュータは「{{name}}」から退出します。再参加するには、相手に新しい参加リンクを作ってもらう必要があります。",
           "switchConfirm": "切り替える",
-          "switchFromOfficial": "デバイス間のリモート操作は「{{name}}」経由になります。自分のリレーを使っている間は、スマホのシステム通知、プロバイダーの共有、共有タスクは使えません。"
+          "switchFromOfficial": "デバイス間のリモート操作は「{{name}}」経由になります。自分のリレーを使っている間は、スマホのシステム通知は使えません。プロバイダーの共有と共有タスクは引き続き Cindy 公式リレーを経由します。"
         },
         "dialog": {
           "steps": {
@@ -7412,6 +7484,16 @@
         "unknownPublisher": "不明な発行元",
         "unknownReviewerDetail": "審査情報はありますが、現在の Cindy は審査キーを認識していないため、審査済みとは表示しません。"
       },
+      "controlPoints": {
+        "title": "実行前チェック",
+        "description": "このプラグインは、自動化やルーティンの実行前にチェックできます。実行をスキップまたは停止できますが、代わりに承認することはできません。",
+        "usage": "使うには、自動化やルーティンの編集画面の「事前チェック」で選びます。",
+        "points": {
+          "will-schedule-run": "自動化の実行前",
+          "will-routine-run": "仲間のルーティンの実行前"
+        },
+        "inactive": "まだ使用できません。このプラグインの更新または再インストール時に許可してください。"
+      },
       "perm": {
         "mail": "メールの下書き・送信カードを使用",
         "mailDetail": "カードで下書きを編集・同期し、送信前に確認と取り消しカウントダウンを表示します。",
@@ -7446,6 +7528,9 @@
         "agentDelegationDetail": "委任範囲内で自動審査を受けて実行します。所有者のなりすましや権限の変更は行いません。",
         "agentTargets": "プロジェクト、既存のセッション、パートナーにメッセージを送信できます",
         "agentTargetsDetail": "ローカルのプロジェクトディレクトリ、セッションとパートナーの名前・IDを確認し、プロジェクト内にセッションを作成したり、既存のセッションとパートナーにテキストや画像を送信したりできます。AI の実行とモデル料金が発生する場合があります。この送信 API 自体では、他のセッションの履歴の読み取り、設定変更、停止はできません。",
+        "agentObserve": "ローカルプロジェクトのセッション一覧と状態を確認できます",
+        "agentObserveDetail": "登録済みのローカルプロジェクト内のセッションのタイトル、Agent の種類、アーカイブ状態、ステータス（実行中、要対応、最終アクティビティ）を確認し、メインウィンドウでセッションを開くことができます。メッセージ、プラン、ファイルの読み取り、メッセージの送信、セッションの変更はできません。",
+        "agentObserveRequest": "セッション閲覧権限を確認",
         "agentHiddenTasks": "セッションリストに表示されないバックグラウンドセッションを作成できます",
         "agentHiddenTasksDetail": "このプラグインが作成したセッションを、セッションリスト・検索・通知に表示しないようにできます。プラグイン詳細の「バックグラウンドセッション」からいつでも確認したり開いたり、セッションリストに表示したりできます。プラグインをアンインストールすると再び表示されます。",
         "agentErrand": "タスクを作成し、作業を実行して結果を取得できます",
@@ -7478,6 +7563,10 @@
         "subscribeHooksDetail": "送信前に各メッセージを審査します。ブロックしたり、本文を書き換えてから送信することがあります。ブロックされたメッセージは編集して再送信できます。",
         "subscribeAssistantReply": "AI の返信を読み取り・書き換え可能",
         "subscribeAssistantReplyDetail": "AI の返信が完了するたびに処理します。本文を推敲・書き換えたり(直接置き換えられ、原文は残りません)、返信の吹き出しを独自に描画したカードに差し替えることがあります(カード差し替えの場合は原文が保持され、ワンタップで確認できます)。",
+        "subscribeScheduleRun": "選んだ自動化の実行前にチェックできます",
+        "subscribeScheduleRunDetail": "「事前チェック」でこのプラグインを選んだ自動化は、実行前に先に確認します。自動化の名前と指示を参照でき、今回をスキップまたは停止できますが、代わりに承認することはできません。",
+        "subscribeRoutineRun": "選んだチームメイトのルーティンの実行前にチェックできます",
+        "subscribeRoutineRunDetail": "「事前チェック」でこのプラグインを選んだルーティンは、トリガーされるたびに先に確認します。ルーティンの指示とトリガーしたイベントの内容を参照でき、今回をスキップまたは停止できますが、代わりに承認することはできません。",
         "card": "メッセージカードを描画",
         "cardExternalLink": "カード内で外部リンクを宣言でき、確認後にブラウザで開きます",
         "cardExternalLinkDetail": "カード内のリンクをクリックすると確認ダイアログが表示され、承認後にシステムブラウザで開きます。http/https アドレスのみ許可されます。",
@@ -7668,6 +7757,22 @@
         "reveal": "セッションリストに表示",
         "revealed": "セッションをセッションリストに表示しました",
         "revealFailed": "セッションをセッションリストに表示できませんでした"
+      },
+      "handoff": {
+        "title": "会話でプラグインに渡したファイル",
+        "description": "会話でこのプラグインに渡したファイルのコピーです。7 日間使われないと自動で削除されます。",
+        "empty": "会話でこのプラグインに渡したファイルはまだありません。",
+        "loadFailed": "ファイル一覧を読み込めませんでした。後でもう一度お試しください。",
+        "refresh": "更新",
+        "openInFinder": "Finder で開く",
+        "openInExplorer": "エクスプローラーで開く",
+        "meta": "{{size}} · {{handedAt}} に渡しました · {{expiresAt}} に自動削除",
+        "delete": "削除",
+        "deleteNamed": "{{name}} を削除",
+        "deleteTitle": "このファイルを削除しますか？",
+        "deleteDescription": "削除すると、プラグインと開いているページは「{{name}}」を使えなくなります。元に戻せません。",
+        "deleteFailed": "削除できませんでした。後でもう一度お試しください。",
+        "cancel": "キャンセル"
       },
       "library": {
         "title": "永続ライブラリ",
@@ -10443,6 +10548,7 @@
       "header": {
         "stepRunning": "{{name}} がステップ {{step}} を作業中",
         "speaking": "{{name}} が返信中…",
+        "queued": "{{name}} は待機中",
         "planning": "{{name}} が役割分担を考え中…"
       },
       "memberCount_one": "メンバー {{count}} 人",
@@ -10489,8 +10595,10 @@
       },
       "mention": {
         "all": "全員",
-        "allHint": "全員が返信",
-        "label": "仲間をメンション"
+        "allHint": "人のみ",
+        "label": "仲間をメンション",
+        "allBots": "すべての仲間",
+        "allBotsHint": "仲間のみ"
       },
       "composer": {
         "label": "グループチャットのメッセージ",
@@ -10601,7 +10709,7 @@
         "speakingMode": "発言の順番",
         "speakingModeAuto": "自動",
         "speakingModeSequential": "常に順番に",
-        "speakingModeAutoNote": "メンションなし・@全員：最初の一巡は同時に考え、その後は順番に発言。特定の仲間へのメンションは指定順です。",
+        "speakingModeAutoNote": "メンションなし・@すべての仲間：最初の一巡は同時に考え、その後は順番に発言。特定の仲間へのメンションは指定順です。",
         "speakingModeSequentialNote": "一度に一人の仲間だけが話し、後の仲間は前の返信を見てから答えます。",
         "speakingModeSaveFailed": "発言の順番を保存できませんでした。もう一度お試しください。",
         "setOrganizer": "まとめ役にする",
@@ -10615,7 +10723,9 @@
         "projectDirClear": "クリア",
         "projectDirNote": "役割分担で作業するとき、仲間はここで作業します。選ばなくてもかまいません。その場合はこのグループチャット専用のフォルダを使います。git プロジェクトを選ぶと、役割分担のたびに新しい worktree とブランチを作るので、手元のコードには触れません。",
         "autoContinueSaveFailed": "ステップの引き継ぎを保存できませんでした。もう一度お試しください。",
-        "projectDirSaveFailed": "プロジェクトフォルダを保存できませんでした。フォルダがまだあるか確認してから、もう一度お試しください"
+        "projectDirSaveFailed": "プロジェクトフォルダを保存できませんでした。フォルダがまだあるか確認してから、もう一度お試しください",
+        "allowMentionAllBots": "すべての仲間への @ を許可",
+        "allowMentionAllBotsHint": "変更できるのはグループ所有者のみです。全員が返信する可能性があるため、大人数のグループでは慎重に有効にしてください。本人に代わる AI の返信には影響しません。"
       },
       "errors": {
         "memberLimit": "グループチャットには仲間が 2〜6 人必要です",
@@ -10625,6 +10735,9 @@
         "hostNotReady": "Cindy の準備がまだ終わっていません。しばらくしてから再試行してください",
         "planOpen": "役割分担の途中です。終わるか停止してから新しく始めてください",
         "planClosed": "この計画はすでに終了したか、更新されています",
+        "revisionConflict": "作業の状態が変わったため、操作を完了できませんでした",
+        "stopOwnershipUnknown": "一部の作業を停止できませんでした。依頼者を確認できません。",
+        "nothingToStop": "停止できる進行中の作業はありません。",
         "invalidAttachment": "添付ファイルを読み込めません。選び直して送信してください。",
         "attachmentUnavailable": "スマートフォンから添付ファイルを取得できません。接続を確認して再試行してください。",
         "attachmentTooLarge": "添付ファイルが 100 MB を超えています。小さいファイルを選んでください。",
@@ -10639,7 +10752,8 @@
         "quoteUnavailable": "引用したメッセージは削除されたか、表示できなくなりました。引用を外したので、もう一度送信してください。",
         "lifecycleUnavailable": "現在のサーバーまたはコンピューターは、この操作にまだ対応していません。",
         "groupDissolved": "このグループは解散しました。閲覧権限のある履歴は引き続き確認できます。",
-        "lastOwner": "退出する前にオーナーを譲渡するか、グループを解散してください。"
+        "lastOwner": "退出する前にオーナーを譲渡するか、グループを解散してください。",
+        "allBotsMentionDisabled": "グループ所有者がすべての仲間への @ を有効にしていません。"
       },
       "organizer": "まとめ役",
       "plan": {
@@ -12604,6 +12718,7 @@
     "verificationFailed": "ChatGPT ログインが復旧したか確認できませんでした。再確認してください。"
   },
   "chat": {
+    "teammateProcess": {"record":"作業履歴","operations":"操作履歴","elapsed":"処理中 {{duration}}","took":"所要時間 {{duration}}","processing":"処理中","worked":"作業履歴","thinking":"考えています","thought":"考えました","failed_other":"{{count}} 件の呼び出しに失敗","separator":"・","actions":{"running":{"read":"ファイルを確認しています","edit":"ファイルを編集しています","search":"検索しています","web":"ウェブを調べています","command":"コマンドを実行しています","tools":"ツールを使用しています","delegate":"作業を依頼しています","plan":"計画を更新しています"},"done":{"read":"ファイルを確認しました","edit":"ファイルを編集しました","search":"検索しました","web":"ウェブを調べました","command":"コマンドを実行しました","tools":"ツールを使用しました","delegate":"作業を依頼しました","plan":"計画を更新しました"}}},
     "imageDelivery": {
       "stored": "画像を受け取りました",
       "failed": "画像の転送に失敗しました。既存の画像の転送を再試行できます。",
@@ -14338,11 +14453,6 @@
         "removeFromSidebarConfirmDescription": "このプロジェクトをサイドバーから削除します。コンピューター上のファイルは削除されません。既存のセッションは「会話」セクションに移動し、引き続き利用できます。",
         "removeFromSidebarConfirmAction": "プロジェクトを削除",
         "removeFromSidebarFailed": "サイドバーからプロジェクトを削除できませんでした。もう一度お試しください。",
-        "syncCodex": "このプロジェクトの Codex セッションを同期",
-        "syncCodexDone": "Codex 同期完了:リンク {{inserted}} 件、更新 {{updated}} 件",
-        "syncCodexAlreadyLinked": "このプロジェクトの Codex セッションはリンク済みです",
-        "syncCodexNone": "このプロジェクトの Codex セッションが見つかりません",
-        "syncCodexFailed": "Codex 同期に失敗しました:{{error}}",
         "showFiles": "ファイルを表示",
         "archivedAll": "すべてアーカイブ",
         "unarchiveAll": "すべてアーカイブ解除",
@@ -15126,6 +15236,25 @@
         },
         "browse": "スクリプトファイルを選択（入力欄へのドラッグ＆ドロップも可）"
       },
+      "preRunPlugin": {
+        "sourceLabel": "チェック方法",
+        "source": {
+          "script": "スクリプト",
+          "plugin": "プラグイン"
+        },
+        "tooltip": "実行のたびに、選んだプラグインに先に確認します。プラグインは実行を続ける・今回はスキップ・停止のいずれかを選べますが、あなたの確認が必要なことを代わりに承認することはできません。",
+        "choose": "プラグインを選択",
+        "unavailable": "使用できないプラグイン",
+        "unavailableHint": "このプラグインは使用できなくなりました。別のプラグインを選ぶまで、「プラグインでエラーが起きたとき」の設定に従います。",
+        "hint": "プラグインは実行を続ける・今回はスキップ・停止のいずれかを選べます。あなたの代わりに承認することはできません。",
+        "empty": "事前チェックに使えるプラグインがまだありません。事前チェックに対応したプラグインをインストールし、インストールまたは更新時に許可してください。",
+        "onFailureLabel": "プラグインでエラーが起きたとき",
+        "onFailure": {
+          "allow": "通常どおり実行",
+          "skip": "今回はスキップ",
+          "block": "停止して失敗として記録"
+        }
+      },
       "validation": {
         "nameRequired": "名前は必須です",
         "promptRequired": "プロンプトは必須です",
@@ -15138,6 +15267,7 @@
         "modelUnavailable": "モデル {{model}} は利用できません。別のモデルを選択してください",
         "reasoningInvalid": "Reasoning は {{values}} のいずれかである必要があります",
         "preRunHookCommandRequired": "事前チェックスクリプトのコマンドを入力してください",
+        "preRunPluginRequired": "事前チェックのプラグインを選んでください",
         "templateParamRequired": "{{label}}を入力してください",
         "templateApplyFailed": "テンプレートを適用できませんでした。パラメータを確認して再試行してください。"
       }
@@ -15623,6 +15753,7 @@
       "titleRevealPath": "このメディアファイルのローカルパスを Agent に渡しますか？",
       "count": "{{count}} 個のファイル",
       "descriptionAttachments": "以下のファイルは現在のセッションの作業ディレクトリの外にあります。許可すると、このプラグインに渡されます(渡されるのはコンテンツのフィンガープリントのみで、パスは渡されません)。",
+      "descriptionHandoff": "以下のファイルは現在のタスクの作業ディレクトリ外にあります。許可すると、プラグインはこれらのファイルのコピーを受け取ります（パスは渡されません）。コピーは 7 日間使われないと自動で削除されます。",
       "descriptionDir": "以下のディレクトリ/ファイルは現在のセッションの作業ディレクトリの外にあります。許可すると、その中のファイルがアップロード用にこのプラグインへ渡されます(渡されるのはワンタイムチケットのみで、パスは渡されません)。",
       "descriptionSaveDir": "以下のディレクトリは現在のセッションの作業ディレクトリの外にあります。許可すると、このプラグインがダウンロードしたファイルをここに保存できます(既存ファイルは上書きされません)。",
       "descriptionRevealPath": "このパスは許可後にのみ現在の Agent へ返され、会話履歴に入ります。ペアリング済みデバイスにも同期される場合があります。この操作によってプラグインへファイルの読み取り権限が付与されることはありません。",
@@ -17444,6 +17575,7 @@
     "sessionModeFresh": "トリガーごとに新規作成（文脈を分離）",
     "sessionModeHint": "永続セッションは同じルーティン会話を続けます。新規作成ではトリガーごとに独立した会話を作成して閉じます。",
     "quietHint": "変化や問題のみ報告します。リマインダーや定時送信ではオフにできます。",
+    "checkSource": "チェック方法",
     "checkCommand": "事前確認コマンド",
     "checkHint": "任意。コンピューターで先に確認します。終了コード 2 は今回の実行をスキップし、0 は続行します。エラーは報告されます。空欄で解除します。",
     "timeoutMs": "確認のタイムアウト（ミリ秒、空欄は無制限）",
@@ -17452,9 +17584,8 @@
       "name": "担当セッションのフォロー（標準）",
       "hint": "担当セッションの停滞、返答待ち、エラー、利用上限、完了を受けてフォローします。"
     },
-    "builtinTodoCheck": {
-      "name": "毎日の Todo 確認（組み込み）",
-      "hint": "平日 9:00 に接続済みのソースから新しい Todo を探し、なければ通知しません。近況からオン・オフでき、一時停止と再開のみできます。"
+    "todoCheck": {
+      "name": "毎日の Todo 確認"
     },
     "builtinNightlyLearning": {
       "name": "夜間の学習（組み込み）",
@@ -17510,6 +17641,14 @@
         "skillDisabled": "スキル「{{title}}」をオフに",
         "skillMerged": "スキル「{{title}}」を「{{into}}」に統合してオフに"
       }
+    },
+    "remote": {
+      "pause": "ルーティンを一時停止",
+      "resume": "ルーティンを再開",
+      "addSchedule": "スケジュールを追加",
+      "addInterval": "間隔を追加",
+      "addEvent": "イベントトリガーを追加",
+      "filterField": "絞り込みフィールド"
     }
   },
   "cindyMakeDoctor": {

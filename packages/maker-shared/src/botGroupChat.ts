@@ -1,3 +1,5 @@
+import type { BotGroupProcessRef } from './botGroupProcess.js';
+export * from './botGroupProcess.js';
 /**
  * Bot group chat wire contract shared by Desktop main, preload and renderer.
  * Product rules: docs/product-rules/bot-group-chat.md.
@@ -114,7 +116,10 @@ export function readImportedBotGroupRuntimeFailureCode(message: {
 }
 
 export interface BotGroupMention {
+  /** Broadcast to human members; personal AI replies retain the human's identity. */
   all: boolean;
+  /** Independent companion broadcast, subject to the group's owner-controlled setting. */
+  allBots?: boolean;
   botIds: string[];
 }
 
@@ -145,6 +150,8 @@ export interface BotGroupMemberView {
 }
 
 export interface BotGroupMessageView {
+  /** Owner-only process reads use the existing task permission; this is only a public locator. */
+  process?: BotGroupProcessRef;
   /** Server-stamped identity at send time; rebinding never rewrites history. */
   maskAttribution?: { self: ChatMaskIdentity; companion: ChatMaskIdentity; sourceMessageId: string };
   /** Server tombstone; it cannot anchor a runtime failure notice. */
@@ -458,6 +465,11 @@ export interface BotGroupRoundView {
 }
 
 export interface BotGroupSummary {
+  /** Execution snapshot already included by server-backed group summaries; absent on older hosts. */
+  round?: BotGroupRoundView;
+  /** Owner-controlled companion broadcast; absent on old servers/hosts. */
+  supportsMentionAudiences?: boolean;
+  allowMentionAllBots?: boolean;
   /** Public roster state, optional for older hosts. */
   teammateActivity?: { phase: string };
   /** Explicit direct-message landing; group management remains unavailable. */
@@ -565,10 +577,13 @@ export type BotGroupErrorCode =
   | 'LAST_OWNER'
   | 'INVALID_PARAMS'
   | 'REVISION_CONFLICT'
+  | 'STOP_OWNERSHIP_UNKNOWN'
+  | 'NOTHING_TO_STOP'
   | 'NOT_FOUND'
   | 'MEMBER_LIMIT'
   | 'MEMBER_UNAVAILABLE'
   | 'MENTION_UNAVAILABLE'
+  | 'ALL_BOTS_MENTION_DISABLED'
   | 'HOST_NOT_READY'
   /** An explicit 安排分工 while a plan is running or waiting. */
   | 'PLAN_OPEN'
@@ -596,6 +611,7 @@ export interface BotGroupCreateInput {
 }
 
 export interface BotGroupUpdateInput {
+  allowMentionAllBots?: boolean;
   groupId: string;
   /** Optional optimistic precondition for server-backed settings. */
   expectedRevision?: number;
@@ -853,7 +869,7 @@ export interface ChatInvitePreview {
 }
 export type ChatGroupAction =
   | { type: 'read'; messageId: string; conversationKind?: 'direct' }
-  | { type: 'update'; name: string; topic: string; description: string; expectedRevision: number; responseMode?: BotGroupReplyMode; speakingMode?: BotGroupSpeakingMode }
+  | { type: 'update'; name: string; topic: string; description: string; expectedRevision: number; responseMode?: BotGroupReplyMode; speakingMode?: BotGroupSpeakingMode; allowMentionAllBots?: boolean }
   | { type: 'nickname'; actorId: string; nickname: string | null }
   | { type: 'avatar'; actorId: string; avatar: { type: 'keep' | 'reset' } | { type: 'set'; data: Uint8Array; mimeType: string } }
   | { type: 'member'; actorId: string; action: 'invite' | 'leave' | 'remove' | 'ban' | 'unban' | 'role'; role?: 'admin' | 'member' }
@@ -891,7 +907,7 @@ export interface ChatServerApi {
    * the server saved. Only the reader's own choice ever follows a Thread.
    */
   followThread(input: { groupId: string; rootId: string; following: boolean }): Promise<ChatServerResult<{ following: boolean }>>;
-  reply(input: { groupId: string; rootId: string; text: string; clientId: string; mentions: BotGroupMention }): Promise<ChatServerResult<{ messageId: string }>>;
+  reply(input: { groupId: string; rootId: string; text: string; clientId: string; mentions: BotGroupMention; attachments?: BotGroupAttachmentInput[] }): Promise<ChatServerResult<{ messageId: string }>>;
   /**
    * Re-post a thread reply to the main chat as the current user. Repeating it for the same
    * reply returns the existing share (`alreadyShared`); it never starts a companion round.

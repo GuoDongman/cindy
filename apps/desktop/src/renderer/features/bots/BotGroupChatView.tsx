@@ -45,7 +45,7 @@ import {
   isDataOwnerPushCurrent,
 } from '@/contexts/dataOwnerGeneration';
 import { useAttachments } from '@/hooks/useAttachments';
-import { discardDraft } from '@/lib/composerDraftStore';
+import { discardDraftTree } from '@/lib/composerDraftStore';
 import {
   classifyUnclassifiedDroppedItems,
   getDroppedFileItems,
@@ -404,6 +404,7 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
           // It must never restore a conversation whose access was just revoked.
           version += 1;
           hasTimeline = false;
+          discardDraftTree(botGroupAttachmentScope(groupId));
           discardOutbox();
           setState({ kind: 'missing' });
         } else {
@@ -498,7 +499,7 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
           queued = null;
           clearRetry();
           // Unsent attachments go with the group (staged copies included).
-          discardDraft(botGroupAttachmentScope(groupId));
+          discardDraftTree(botGroupAttachmentScope(groupId));
           discardOutbox();
           setState({ kind: 'missing' });
           // The authoritative hide can unmount the drawer before its IPC reply.
@@ -553,9 +554,10 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
     name: botGroupMemberDisplayName(member), avatar: member.avatar ?? null, avatarUrl: member.avatarUrl, avatarColor: member.avatarColor ?? null,
   }])), [members]);
   const allLabel = t('bots.groupChat.mention.all');
+  const allBotsLabel = t('bots.groupChat.mention.allBots');
   const mentionLabels = useMemo(
-    () => [allLabel, ...members.flatMap((member) => [member.name, botGroupMemberDisplayName(member), member.nickname || member.displayName || member.name])],
-    [allLabel, members],
+    () => [allLabel, allBotsLabel, ...members.flatMap((member) => [member.name, botGroupMemberDisplayName(member), member.nickname || member.displayName || member.name])],
+    [allLabel, allBotsLabel, members],
   );
 
   const realMessages = useMemo(
@@ -1035,7 +1037,7 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
     setStopping(true);
     try {
       const result = await (scope ? api.stopBotGroupRound(groupId, scope) : api.stopBotGroupRound(groupId));
-      if (!result.ok) toast.error(t('bots.groupChat.composer.stopFailed'));
+      if (!result.ok) toast.error(t(botGroupErrorKey(result.errorCode, 'bots.groupChat.composer.stopFailed')));
     } catch {
       toast.error(t('bots.groupChat.composer.stopFailed'));
     } finally {
@@ -1400,10 +1402,27 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
               />
             </div>
           ) : null}
-          {speakers.map((speaker) => (runningStep && speaker.activity === 'step'
-            // The progress strip carries a running step's status; only its confirmations stay here.
-            ? <BotGroupSpeakerInteraction key={speaker.executionId ?? `${speaker.member.botId}:${speaker.activity}`} speaker={speaker} />
-            : <BotGroupSpeakingLine key={speaker.executionId ?? `${speaker.member.botId}:${speaker.activity}`} speaker={speaker} />))}
+          {speakers.map(speaker => speaker.activity === 'planning'
+            ? <BotGroupSpeakingLine key={speaker.executionId ?? speaker.member.botId} speaker={speaker} />
+            : <BotGroupSpeakerInteraction key={speaker.executionId ?? speaker.member.botId} speaker={speaker} />)}
+      {running && (runningStep || speakers.length > 0) && !sharing && !group.archived ? (
+        <BotGroupProgressStrip
+          key={runningStep ? `step:${runningStep.plan.id}:${runningStep.step.position}` : speakingKey}
+          step={runningStep ? {
+            ...runningStep,
+            member: memberById.get(runningStep.step.botId),
+            displayName: (() => {
+              const member = memberById.get(runningStep.step.botId);
+              return member ? botGroupMemberDisplayName(member) : runningStep.step.botName;
+            })(),
+          } : null}
+          speakers={speakers}
+          onStop={scope => void stopRound(scope)}
+          canStopAll={!!group.canStopAll && !!group.round.othersActive}
+          stopping={stopping}
+        />
+      ) : null}
+
         </div>
       </div>
       <div className="relative h-0 shrink-0" inert={newMessageCount <= 0}>
@@ -1433,25 +1452,8 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
           </div>
         </div>
       ) : null}
-      {running && (runningStep || speakers.length > 0) && !sharing && !group.archived ? (
-        <BotGroupProgressStrip
-          key={runningStep ? `step:${runningStep.plan.id}:${runningStep.step.position}` : speakingKey}
-          step={runningStep ? {
-            ...runningStep,
-            member: memberById.get(runningStep.step.botId),
-            displayName: (() => {
-              const member = memberById.get(runningStep.step.botId);
-              return member ? botGroupMemberDisplayName(member) : runningStep.step.botName;
-            })(),
-          } : null}
-          speakers={speakers}
-          onStop={scope => void stopRound(scope)}
-          canStopAll={!!group.canStopAll && !!group.round.othersActive}
-          stopping={stopping}
-        />
-      ) : null}
       {sharing ? <ShareSelectionBar sessionId={shareScope} barWidth="100%"
-        getContentWidth={() => contentRef.current?.querySelector('article')?.getBoundingClientRect().width ?? 760} /> : group.archived || group.dissolvedAt ? <p className="border-t border-[var(--border-default)] p-4 text-center text-13 text-[var(--text-tertiary)]">{t(group.dissolvedAt ? 'bots.groupChat.lifecycle.dissolved' : 'bots.groupChat.server.settings.archived')}</p> : <BotGroupComposer
+        getContentWidth={() => contentRef.current?.querySelector('article')?.getBoundingClientRect().width ?? 760} /> : group.archived || group.dissolvedAt ? <p className="border-t border-[var(--border-default)] p-4 text-center text-13 text-[var(--text-tertiary)]">{t(group.dissolvedAt ? 'bots.groupChat.lifecycle.dissolved' : 'bots.groupChat.server.settings.archived')}</p> : <BotGroupComposer allowMentionAllBots={group.supportsMentionAudiences === true && group.allowMentionAllBots === true}
         groupId={group.id}
         conversationKind={direct ? 'direct' : undefined}
         draftKey={attachmentScope}

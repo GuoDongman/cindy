@@ -625,6 +625,8 @@ export interface ChatMessage {
     /** 代输入结束留痕:由隐藏续接行派生,只有步数、设备与域名,没有任何输入值。 */
     | 'input-handoff'
     | 'context-rebuild'
+    /** 任务导入的时间线标记：开头的来源说明与结尾的分隔。 */
+    | 'session-import'
     | 'mcp-app';
   mcpAppClientId?: string;
   systemCardData?: Record<string, unknown>;
@@ -980,10 +982,11 @@ export interface PendingGhostGrantConfirm {
    * 逐条确认档时逐次弹,同目录本会话批一次);workspace = 意识申请以该目录
    * 为工作区在侧边栏创建/复用会话入口(不过户字节);
    * forge_source = Forge 打包/骨架/安装的源码目录在工作目录外;
+   * handoff = 非媒体文件交给插件一份 7 天后自动删除的副本;
    * outside_workdir = 文档/电脑等内置工具读写工作目录外的路径。
    */
   lane:
-    | 'attachments' | 'dir' | 'save_dir' | 'reveal_path' | 'fs_write' | 'workspace' | 'forge_source' | 'outside_workdir';
+    | 'attachments' | 'handoff' | 'dir' | 'save_dir' | 'reveal_path' | 'fs_write' | 'workspace' | 'forge_source' | 'outside_workdir';
   sourceTool?: string;
   operation?: 'read' | 'write';
   items: Array<{
@@ -17590,6 +17593,7 @@ function parseGhostGrantConfirmRequest(request: {
   const lane = request.lane;
   if (
     lane !== 'attachments' &&
+    lane !== 'handoff' &&
     lane !== 'dir' &&
     lane !== 'save_dir' &&
     lane !== 'reveal_path' &&
@@ -19511,6 +19515,20 @@ function mapServerMessages(serverMsgs: Message[]): ChatMessage[] {
       return {
         clientId: m.clientId, role: 'assistant' as const, content: '', isStreaming: false,
         systemCardType: 'agent-switch' as const, systemCardData: { ...m.agentMeta.modelChange },
+      };
+    }
+    const sessionImport =
+      m.role === 'assistant' && m.agentMeta && typeof m.agentMeta === 'object'
+        ? (m.agentMeta as { sessionImport?: unknown }).sessionImport
+        : undefined;
+    if (sessionImport && typeof sessionImport === 'object') {
+      return {
+        clientId: m.clientId,
+        role: 'assistant' as const,
+        content: '',
+        isStreaming: false,
+        systemCardType: 'session-import' as const,
+        systemCardData: { ...(sessionImport as Record<string, unknown>) },
       };
     }
     // 同一引擎换干净原生会话：可见交接记录，展开看发给新窗口的摘要。
