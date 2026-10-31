@@ -149,17 +149,23 @@ function pageClient() {
       };
     }
   }
-  // 暂存后的预览在容器里渲染，不换文档；数据一律用 textContent。
+  // 暂存后的预览显示在文件列表下方，不换文档，其余文件仍可上传；数据一律用 textContent。
   function showBatch(batch) {
     const item = (tag, value) => Object.assign(document.createElement(tag), { textContent: value });
     const rows = item('ul'); rows.append(...(batch.rows || []).map(row => item('li', JSON.stringify(row))));
     const errors = item('ul'); errors.append(...(batch.errors || []).map(error => item('li', '第 ' + error.line + ' 行：' + error.message)));
     const confirm = item('button', '确认导入'); confirm.id = 'confirm-import'; confirm.dataset.batch = batch.batchId;
-    const cancel = item('button', '取消'); cancel.dataset.view = 'overview';
-    const status = item('p'); status.id = 'result'; status.setAttribute('role', 'status');
-    content.replaceChildren(...(batch.offline ? [item('p', '离线示例：未读取真实文件，接入后端后解析真实内容。')] : []),
-      item('h1', '文件预览'), item('p', '共 ' + (batch.total ?? (batch.rows || []).length) + ' 行，出错 ' + (batch.errors || []).length + ' 行。'),
-      rows, errors, confirm, cancel, status);
+    let preview = content.querySelector('#import-preview');
+    if (!preview) {
+      preview = item('section'); preview.id = 'import-preview';
+      const result = content.querySelector('#result');
+      if (result) result.before(preview); else content.append(preview, Object.assign(item('p'), { id: 'result' }));
+    }
+    // 取消只收起这份预览，不提交，也不离开文件列表。
+    const cancel = item('button', '取消'); cancel.onclick = () => preview.remove();
+    preview.replaceChildren(...(batch.offline ? [item('p', '离线示例：未读取真实文件，接入后端后解析真实内容。')] : []),
+      item('h2', '文件预览'), item('p', '共 ' + (batch.total ?? (batch.rows || []).length) + ' 行，出错 ' + (batch.errors || []).length + ' 行。'),
+      rows, errors, confirm, cancel);
     bind();
   }
   // 对话交来的媒体附件由宿主放进 hostContext，每项是 resource_link，地址只读、仅本卡有效。
