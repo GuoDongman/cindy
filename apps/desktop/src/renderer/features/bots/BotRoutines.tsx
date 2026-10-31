@@ -83,6 +83,8 @@ export function BotRoutines({
   const [draft, setDraft] = useState<RoutineInput | null>(null);
   // 前置检查用脚本还是插件；插件只能在本机伙伴上选(插件装在各自的电脑上)。
   const [checkSource, setCheckSource] = useState<'script' | 'plugin'>('script');
+  // 打开时脚本与插件都已配置(Agent 设的)：界面显示插件，保存时脚本原样保留。
+  const [keepScript, setKeepScript] = useState(false);
   const [history, setHistory] = useState<RoutineRun[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -166,6 +168,7 @@ export function BotRoutines({
   const localTarget = settingsTarget.kind === 'local';
   useEffect(() => {
     setCheckSource(draft?.preRunPlugin ? 'plugin' : 'script');
+    setKeepScript(!!draft?.preRunPlugin && !!draft?.preRunHook?.command);
     // 只在切换编辑对象时按已保存内容重置。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
@@ -174,7 +177,7 @@ export function BotRoutines({
   /** 保存时只保留选中的检查方式；远程伙伴不改插件设置(省略 = 保留)。 */
   const draftForSave = (value: RoutineInput): RoutineInput => {
     if (!localTarget) return value;
-    if (pluginCheck) return { ...value, preRunHook: null };
+    if (pluginCheck) return keepScript ? value : { ...value, preRunHook: null };
     return { ...value, preRunPlugin: null };
   };
   const editable = (value: RoutineInput) =>
