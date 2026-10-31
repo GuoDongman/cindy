@@ -12,11 +12,14 @@ import kotlin.math.roundToInt
 enum class WidgetKind { Quota, Usage }
 
 enum class WidgetFamily(val refWidth: Float, val refHeight: Float) {
-  Small(158f, 158f), Medium(338f, 158f), Large(338f, 354f);
+  /** One launcher row (Android only; iOS has no equivalent): the sources side by side, tube beside its numbers. */
+  Strip(110f, 48f), Small(158f, 158f), Medium(338f, 158f), Large(338f, 354f);
 
   companion object {
-    /** Which iOS layout a launcher cell grid is closest to. */
+    /** Which iOS layout a launcher cell grid is closest to; a single row gets the strip. */
     fun of(widthDp: Float, heightDp: Float): WidgetFamily = when {
+      // One launcher row is 40–110dp tall depending on the launcher; wide and flat is where the strip beats a shrunk tile.
+      heightDp < 120f && widthDp >= heightDp * 1.4f -> Strip
       widthDp < 220f -> Small
       heightDp >= 240f -> Large
       else -> Medium
@@ -84,6 +87,12 @@ object WidgetRenderer {
     // ---------------------------------------------------------------- shared pieces
 
     fun empty(title: String, body: String, pad: Float = 16f) {
+      if (family == WidgetFamily.Strip) {
+        val style = sys(13f, pal.ink, Weight.Semibold)
+        p.cindyMark(12f, (h - 16f) / 2, 16f, pal.ink3)
+        p.fitText(title, 36f, (h - p.lineHeight(style)) / 2, style, w - 48f)
+        return
+      }
       p.cindyMark(pad, pad, 16f, pal.ink3)
       val bodyStyle = sys(12f, pal.ink3)
       val titleStyle = sys(15f, pal.ink, Weight.Semibold)
@@ -235,8 +244,48 @@ object WidgetRenderer {
       }
     }
 
+    /** One row: each source is a short tube with its number, name and reset time stacked beside it. */
+    private fun quotaStrip(sources: List<WidgetSource>) {
+      val subscriptions = sources.filter { it.kind == "subscription" }
+      val pool = if (subscriptions.isEmpty()) sources else subscriptions
+      val pad = 10f
+      val count = ((w - 2 * pad) / 66f).toInt().coerceIn(1, 6).coerceAtMost(pool.size)
+      val list = pool.take(count)
+      val colWidth = (w - 2 * pad) / list.size
+      val valueStyle = num(17f, pal.ink)
+      val nameStyle = sys(9.5f, pal.ink2)
+      val whenStyle = sys(9.5f, pal.ink2, Weight.Medium)
+      val stack = p.lineHeight(valueStyle) + p.lineHeight(nameStyle) + p.lineHeight(whenStyle)
+      val tubeHeight = min(h - 12f, max(30f, stack))
+      val top = (h - tubeHeight) / 2
+      list.forEachIndexed { i, s ->
+        val x = pad + i * colWidth
+        tube(s, x + 2, top, 12f, tubeHeight)
+        val tx = x + 2 + 12f + 7f
+        val width = colWidth - (tx - x) - 2f
+        var y = (h - stack) / 2
+        val value = s.value
+        if (value != null) {
+          val ink = if (s.stale) withAlpha(pal.ink, 0.5f) else pal.ink
+          val numStyle = num(if (s.kind == "balance") 15f else 17f, ink)
+          val unit = s.unit
+          val unitStyle = num(10f, pal.ink3)
+          val baseline = y + p.ascent(numStyle)
+          p.textAt(value, tx, baseline, numStyle)
+          if (unit != null) p.textAt(unit, tx + p.textWidth(value, numStyle) + 1f, baseline, unitStyle)
+        } else {
+          p.fitText(s.label ?: "—", tx, y, sys(10.5f, pal.ink2, Weight.Semibold), width)
+        }
+        y += p.lineHeight(valueStyle)
+        p.fitText(s.name, tx, y, nameStyle, width)
+        y += p.lineHeight(nameStyle)
+        p.fitText(f.whenText(s, coarse = true), tx, y, sys(9.5f, pal.level(f.resetLevel(s)) ?: pal.ink2, Weight.Medium), width)
+      }
+    }
+
     private fun quotaColumns(sources: List<WidgetSource>) {
       when (family) {
+        WidgetFamily.Strip -> quotaStrip(sources)
         WidgetFamily.Small -> {
           // Subscriptions first; the Cindy balance is not a subscription.
           val subscriptions = sources.filter { it.kind == "subscription" }
@@ -367,6 +416,7 @@ object WidgetRenderer {
     private fun singleSource(s: WidgetSource, d: WidgetDetail) {
       val stale = f.staleLabel(6.0)
       when (family) {
+        WidgetFamily.Strip -> quotaStrip(listOf(s))
         WidgetFamily.Small -> {
           val top = 14f
           val headerHeight = if (stale != null) staleLine(stale, 14f, top, w - 28f) else detailHeader(s, d, 14f, top, w - 28f, 12f)
@@ -473,6 +523,16 @@ object WidgetRenderer {
       val todayValue = "${f.text("valueBasis")} ${f.money(today.total)}"
       val small = sys(11f, pal.ink3)
       when (family) {
+        WidgetFamily.Strip -> {
+          val label = sys(10f, pal.ink3)
+          val figureTop = (h - (p.lineHeight(label) + p.lineHeight(num(26f, pal.ink)))) / 2
+          p.fitText(todayLabel, 12f, figureTop, label, 120f)
+          val figureWidth = min(w * 0.42f, 120f)
+          tokenFigure(today.totalTokens, 12f, figureTop + p.lineHeight(label), figureWidth, 26f)
+          val chartLeft = 12f + figureWidth + 12f
+          val days14 = if (w - chartLeft > 140f) 14 else 7
+          p.dailyBars(daily.takeLast(days14), breakdown, RectF(chartLeft, 10f, w - 12f, h - 10f), gap = 3f)
+        }
         WidgetFamily.Small -> {
           val left = 16f
           val width = w - 32f

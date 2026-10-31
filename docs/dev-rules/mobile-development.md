@@ -401,7 +401,8 @@ SharedPreferences `cindy-usage-widgets`。
 
 组件内容由 `WidgetRenderer` 按启动器格子的实际尺寸直接画成位图（版式与 iOS 的小 / 中 / 大一致，格子比 iOS 尺寸小时整体
 等比缩小，大时靠弹性空白撑开），浅 / 深两套都画好，由 `layout` 与 `layout-night` 选择可见的一张，所以系统切换深浅色不需要
-重绘。每 30 分钟（`updatePeriodMillis`）、App 写入新数据、调整大小时重绘。Barlow Condensed 数字字体由 Gradle 任务从
+重绘。宽而扁的格子（高度 < 120dp 且宽 ≥ 1.4 倍高，即单行）用 Android 独有的单行版式（液柱在左、数字名称重置时间叠在右；每日用量是今日数字加迷你柱图），
+启动器里一行的实际高度因启动器而异（40–110dp），最小可缩到 40dp 高。每 30 分钟（`updatePeriodMillis`）、App 写入新数据、调整大小时重绘。Barlow Condensed 数字字体由 Gradle 任务从
 `apps/desktop/native/menubar` 复制进 assets，不再提交第三份；文案表 `assets/usage-widgets/text.json` 由
 `plugins/usage-widgets/UsageWidgetModel.swift` 的 `WidgetText` 转出并追加数据来源页文案，两处同步修改；选择器里的名称与说明
 在 `res/values*/cindy_usage_widgets_strings.xml`（同源生成）。
