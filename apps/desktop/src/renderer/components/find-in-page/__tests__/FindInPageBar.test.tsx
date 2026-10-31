@@ -89,9 +89,15 @@ describe('FindInPageBar', () => {
 
     const previewEscape = vi.fn();
     document.addEventListener('keydown', previewEscape);
+    fireEvent.compositionStart(input);
     fireEvent.keyDown(input, { key: 'Escape', isComposing: true });
     expect(screen.getByRole('searchbox')).toBe(input);
     expect(previewEscape).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: 'Escape', repeat: true });
+    expect(screen.getByRole('searchbox')).toBe(input);
+    expect(previewEscape).not.toHaveBeenCalled();
+    fireEvent.keyUp(input, { key: 'Escape' });
     fireEvent.keyDown(content, { key: 'Escape' });
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(previewEscape).not.toHaveBeenCalled();

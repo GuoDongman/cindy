@@ -18,6 +18,7 @@ export default {
     'nested-mermaid': { about: 'A diagram opened from the document owns shortcuts until it closes' },
     'loading-editor': { about: 'The foreground document owns find and Escape before its file read completes' },
     'focus-restore': { about: 'Closing find restores the document toolbar opener for keyboard navigation' },
+    'ime-escape': { about: 'An IME-cancelling Escape and its repeats keep search open until a new press' },
   },
   async check(page, ui) {
     const findKey = ui.platform === 'darwin' ? 'Meta+f' : 'Control+f';
@@ -63,8 +64,30 @@ export default {
       return [...CSS.highlights.get('cindy-find-in-page-match')].every(range => root.contains(range.startContainer));
     }), true);
     await ui.capture('document-search');
+    if (ui.case === 'ime-escape') {
+      // Chromium composition/key event sequence, not a native IME candidate UI.
+      await input.dispatchEvent('compositionstart');
+      await input.dispatchEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true, cancelable: true });
+      await input.dispatchEvent('compositionend');
+      await input.dispatchEvent('keydown', { key: 'Escape', repeat: true, bubbles: true, cancelable: true });
+      assert.equal(await input.isVisible(), true);
+      await input.dispatchEvent('keyup', { key: 'Escape', bubbles: true });
+      await card.getByText('1/2', { exact: true }).waitFor();
+      await ui.capture('ime-cancel-keeps-search');
+    }
     if (ui.case === 'nested-mermaid') {
-      await card.getByRole('button', { name: await ui.t('chat.mermaid.clickToZoom'), exact: true }).click();
+      const diagramTrigger = card.getByRole('button', { name: await ui.t('chat.mermaid.clickToZoom'), exact: true });
+      await diagramTrigger.click({ button: 'right' });
+      const menu = page.getByRole('menu');
+      await menu.waitFor();
+      await page.keyboard.press('Escape');
+      await menu.waitFor({ state: 'detached' });
+      assert.equal(await input.isVisible(), true);
+      await page.locator('[data-text-lightbox-overlay]').evaluate(async el => {
+        await Promise.all(el.getAnimations().map(animation => animation.finished.catch(() => {})));
+      });
+      assert.equal(await page.locator('[data-text-lightbox-overlay]').evaluate(el => getComputedStyle(el).opacity), '1');
+      await diagramTrigger.click();
       const diagram = page.locator('[data-mermaid-lightbox-overlay]');
       await diagram.waitFor();
       await page.keyboard.press(findKey);

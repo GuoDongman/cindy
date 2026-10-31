@@ -191,7 +191,7 @@ export function TextLightbox({ filePath, fileName, initialLine, triggerRef, onCl
   // F6: Esc key listener
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.repeat) return;
+      if (e.repeat || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
       if (e.key === 'Escape' && overlayRef.current && !isLightboxCovered(overlayRef.current)) {
         handleClose();
       }
