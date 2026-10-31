@@ -34,12 +34,25 @@ function Fixture({ editor }: { editor: boolean }) {
 mountPage({
   route: '/',
   host: ctx => ({
-    readTextFilePreview: async () => ({ success: true, data: markdown, size: markdown.length }),
+    readTextFilePreview: async () => {
+      if (ctx.case === 'loading-editor') {
+        await new Promise<void>(resolve => {
+          window.addEventListener('fixture-preview-ready', () => resolve(), { once: true });
+        });
+      }
+      return {
+        success: true,
+        data: ctx.case === 'nested-mermaid'
+          ? markdown.replace('正文中的苹果。', '正文中的苹果。\n\n```mermaid\nflowchart LR\n  A[开始] --> B[结束]\n```')
+          : markdown,
+        size: markdown.length,
+      };
+    },
     appShortcuts: {
       getState: () => ({ platform: ctx.platform, overrides: {}, globalFailures: [] }),
       onChanged: subscription('shortcuts'),
     },
     voiceInput: { getDataSnapshot: () => ({ settings: {} }), onDataChanged: subscription('voice') },
   }),
-  render: ctx => <Fixture editor={ctx.case === 'background-editor'} />,
+  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} />,
 });

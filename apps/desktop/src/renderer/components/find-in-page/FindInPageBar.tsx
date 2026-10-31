@@ -5,9 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { isLightboxCovered } from '@/lib/lightboxLayer';
 import { useAppShortcut } from '@/hooks/useAppShortcut';
 import { WINDOW_NO_DRAG_STYLE } from '@/components/layout/windowDrag';
-import { getTextPreviewSearchRoot, isFindInPageClaimed } from './findInPageOwnership';
+import { getTextPreviewSearchHost, isFindInPageClaimed } from './findInPageOwnership';
 import { acquirePageTextAccess, requestPageTextNavigation } from '@/lib/pageTextAccess';
 
 const MATCH_HIGHLIGHT_NAME = 'cindy-find-in-page-match';
@@ -352,7 +353,12 @@ function collectTextMatches(query: string, excludedRoot: HTMLElement | null): Te
   // Keep off-screen and scrollable content searchable. Geometry-based clipping
   // guesses cannot distinguish a closed drawer from history outside a scroll
   // viewport, so only explicit hidden styles are excluded here.
-  const walker = document.createTreeWalker(getTextPreviewSearchRoot() ?? document.body, 4);
+  const preview = getTextPreviewSearchHost();
+  const searchRoot = preview
+    ? preview.querySelector('[data-text-lightbox-search-root]')
+    : document.body;
+  if (!searchRoot) return [];
+  const walker = document.createTreeWalker(searchRoot, 4);
   let node = walker.nextNode();
   while (node) {
     const textNode = node as Text;
@@ -392,19 +398,20 @@ function isInsideRoot(node: Node, root: HTMLElement | null): boolean {
 export function FindInPageBar() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [previewRoot, setPreviewRoot] = useState<HTMLElement | null>(null);
+  const [previewHost, setPreviewHost] = useState<HTMLElement | null>(null);
   // Text ranges must cover the logical page, including virtualized row bodies.
   // Hold them mounted while highlights refer to their text nodes; release on
   // close/unmount without changing the message store or pagination cursor.
   useLayoutEffect(
-    () => open && !previewRoot ? acquirePageTextAccess() : undefined,
-    [open, previewRoot],
+    () => open && !previewHost ? acquirePageTextAccess() : undefined,
+    [open, previewHost],
   );
   const [text, setText] = useState('');
   const [matches, setMatches] = useState(0);
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const previewOpenerRef = useRef<HTMLElement | null>(null);
   const rangesRef = useRef<TextMatch[]>([]);
   const activeRef = useRef(0);
   const pendingScrollFrameRef = useRef<number | null>(null);
@@ -490,11 +497,23 @@ export function FindInPageBar() {
     cancelPendingScroll();
     setOpen(false);
     setText('');
-    setPreviewRoot(null);
+    setPreviewHost(null);
     isComposingRef.current = false;
     compositionCommitRef.current = null;
     clearSearchResults();
+    const opener = previewOpenerRef.current;
+    previewOpenerRef.current = null;
+    if (opener?.isConnected && !isLightboxCovered(opener)) {
+      opener.focus({ preventScroll: true });
+    }
   }, [cancelPendingScroll, clearSearchResults]);
+
+  const rememberPreviewOpener = useCallback((host: HTMLElement | null) => {
+    const focused = document.activeElement;
+    previewOpenerRef.current = host && focused instanceof HTMLElement && host.contains(focused)
+      ? focused
+      : host;
+  }, []);
 
   // Keep the single search UI in the foreground document's stacking context.
   // Observe only while searching, including previews opened after the bar;
@@ -502,14 +521,19 @@ export function FindInPageBar() {
   useLayoutEffect(() => {
     if (!open) return;
     const syncPreview = () => {
-      const nextRoot = getTextPreviewSearchRoot();
-      if (nextRoot === previewRoot) return;
-      if (previewRoot && !nextRoot) {
+      const nextHost = getTextPreviewSearchHost();
+      if (nextHost && isLightboxCovered(nextHost)) {
+        close();
+        return;
+      }
+      if (nextHost === previewHost) return;
+      if (previewHost && !nextHost) {
         close();
         return;
       }
       cancelPendingScroll();
-      setPreviewRoot(nextRoot);
+      rememberPreviewOpener(nextHost);
+      setPreviewHost(nextHost);
       setText('');
       isComposingRef.current = false;
       compositionCommitRef.current = null;
@@ -519,18 +543,18 @@ export function FindInPageBar() {
     const observer = new MutationObserver(syncPreview);
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [open, previewRoot, close, cancelPendingScroll, clearSearchResults]);
+  }, [open, previewHost, close, cancelPendingScroll, clearSearchResults, rememberPreviewOpener]);
 
   useLayoutEffect(() => {
     if (open) inputRef.current?.focus();
-  }, [open, previewRoot]);
+  }, [open, previewHost]);
 
   // Capture Escape even after the reader clicks back into the document. The
   // lightbox's document-level Escape handler sees only the next Escape.
   useEffect(() => {
-    if (!open || !previewRoot) return;
+    if (!open || !previewHost) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || isLightboxCovered(previewHost)) return;
       if (event.isComposing || event.keyCode === 229) {
         // Leave the IME's default cancellation intact, without dismissing the
         // search or the preview through a later Escape listener.
@@ -543,7 +567,7 @@ export function FindInPageBar() {
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [open, previewRoot, close]);
+  }, [open, previewHost, close]);
 
   useEffect(() => () => clearFindHighlights(), []);
 
@@ -638,9 +662,11 @@ export function FindInPageBar() {
   // the chord before the global bar sees it.
   useAppShortcut('find-in-page', () => {
     // 局部接管者(如 doc 模式的 FileBodyView)存在时让位。
-    const preview = getTextPreviewSearchRoot();
+    const preview = getTextPreviewSearchHost();
+    if (preview && isLightboxCovered(preview)) return false;
     if (!preview && isFindInPageClaimed()) return false;
-    setPreviewRoot(preview);
+    if (!open || previewHost !== preview) rememberPreviewOpener(preview);
+    setPreviewHost(preview);
     setOpen(true);
     queueMicrotask(() => {
       inputRef.current?.focus();
@@ -656,13 +682,13 @@ export function FindInPageBar() {
       ref={rootRef}
       className={cn(
         // Stay below the window title bar or the foreground document toolbar.
-        previewRoot ? 'absolute right-3 top-16 z-10' : 'fixed right-4 top-[54px] z-50',
+        previewHost ? 'absolute right-3 top-16 z-10' : 'fixed right-4 top-[54px] z-50',
         'flex items-center gap-1',
         'rounded-lg border border-border',
         'bg-popover text-popover-foreground',
         'shadow-lg',
         'px-2 py-1.5',
-        previewRoot ? 'w-80 max-w-[calc(100%-24px)]' : 'min-w-[280px]',
+        previewHost ? 'w-80 max-w-[calc(100%-24px)]' : 'min-w-[280px]',
         // mount-only 入场:Cmd+F 呼出时从右上角(标题栏方向)轻长出;
         // 关闭走 unmount 直接消失(查找栏关闭要"立即让路",不做 exit)。
         'origin-top-right animate-float-in',
@@ -793,7 +819,7 @@ export function FindInPageBar() {
     </div>
   );
 
-  return previewRoot
-    ? createPortal(bar, previewRoot.closest('[data-text-lightbox-card]') ?? previewRoot)
+  return previewHost
+    ? createPortal(bar, previewHost)
     : bar;
 }

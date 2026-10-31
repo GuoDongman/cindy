@@ -32,7 +32,7 @@ export function isFindInPageClaimed(): boolean {
 }
 
 /** The foreground Markdown preview owns find even when an editor remains behind it. */
-export function getTextPreviewSearchRoot(): HTMLElement | null {
-  const roots = document.querySelectorAll<HTMLElement>('[data-text-lightbox-search-root]');
+export function getTextPreviewSearchHost(): HTMLElement | null {
+  const roots = document.querySelectorAll<HTMLElement>('[data-text-lightbox-search-host]');
   return roots.item(roots.length - 1);
 }

@@ -15,18 +15,42 @@ export default {
   cases: {
     default: { about: 'Document-only matching, visible pointer targets, table navigation and Escape order' },
     'background-editor': { about: 'An existing file-editor search yields shortcuts to the foreground preview' },
+    'nested-mermaid': { about: 'A diagram opened from the document owns shortcuts until it closes' },
+    'loading-editor': { about: 'The foreground document owns find and Escape before its file read completes' },
+    'focus-restore': { about: 'Closing find restores the document toolbar opener for keyboard navigation' },
   },
   async check(page, ui) {
     const findKey = ui.platform === 'darwin' ? 'Meta+f' : 'Control+f';
     // Keep a search open behind the preview to exercise retargeting and the
     // editor capture listener that used to consume the same shortcut first.
-    await page.keyboard.press(findKey);
-    if (ui.case === 'background-editor') await page.locator('[data-doc-search-bar]').waitFor();
-    else await page.getByRole('searchbox').waitFor();
+    const editor = ['background-editor', 'loading-editor'].includes(ui.case);
+    if (ui.case !== 'focus-restore') {
+      await page.keyboard.press(findKey);
+      if (editor) await page.locator('[data-doc-search-bar]').waitFor();
+      else await page.getByRole('searchbox').waitFor();
+    }
     await page.getByTestId('open-preview').click();
     const card = page.locator('[data-text-lightbox-card]');
     const body = page.locator('[data-text-lightbox-search-root]');
+    await card.waitFor();
+    if (ui.case === 'loading-editor') {
+      await page.keyboard.press(findKey);
+      const loadingInput = card.getByRole('searchbox');
+      await loadingInput.waitFor();
+      await loadingInput.fill('苹果');
+      await card.getByText('0/0', { exact: true }).waitFor();
+      await ui.capture('loading-search');
+      await page.keyboard.press('Escape');
+      await loadingInput.waitFor({ state: 'detached' });
+      assert.equal(await card.isVisible(), true);
+      await page.keyboard.press(findKey);
+      await loadingInput.fill('苹果');
+      await page.evaluate(() => window.dispatchEvent(new Event('fixture-preview-ready')));
+      await card.getByText('1/2', { exact: true }).waitFor();
+    }
     await card.getByRole('heading', { name: 'Markdown 查找验证', exact: true }).waitFor();
+    const opener = card.getByRole('button', { name: await ui.t('chat.textLightbox.copyAll'), exact: true });
+    if (ui.case === 'focus-restore') await opener.focus();
     await page.keyboard.press(findKey);
     await ui.capture('preview-find-opened');
     await body.waitFor();
@@ -39,6 +63,20 @@ export default {
       return [...CSS.highlights.get('cindy-find-in-page-match')].every(range => root.contains(range.startContainer));
     }), true);
     await ui.capture('document-search');
+    if (ui.case === 'nested-mermaid') {
+      await card.getByRole('button', { name: await ui.t('chat.mermaid.clickToZoom'), exact: true }).click();
+      const diagram = page.locator('[data-mermaid-lightbox-overlay]');
+      await diagram.waitFor();
+      await page.keyboard.press(findKey);
+      await ui.capture('diagram-foreground');
+      assert.equal(await card.getByRole('searchbox').count(), 0);
+      await page.keyboard.press('Escape');
+      await diagram.waitFor({ state: 'detached' });
+      assert.equal(await card.isVisible(), true);
+      await page.keyboard.press(findKey);
+      await input.fill('苹果');
+      await card.getByText('1/2', { exact: true }).waitFor();
+    }
     await card.getByRole('button', { name: await ui.t('findInPage.next'), exact: true }).click();
     await card.getByText('2/2', { exact: true }).waitFor();
     assert.ok(await body.evaluate(el => el.scrollTop) > 0);
@@ -51,10 +89,13 @@ export default {
     await input.waitFor({ state: 'detached' });
     assert.equal(await card.isVisible(), true);
     assert.equal(await page.evaluate(() => CSS.highlights.has('cindy-find-in-page-match')), false);
+    if (ui.case === 'focus-restore') {
+      assert.equal(await opener.evaluate(el => document.activeElement === el), true);
+    }
     await page.keyboard.press('Escape');
     await card.waitFor({ state: 'detached' });
     await page.keyboard.press(findKey);
-    if (ui.case === 'background-editor') await page.locator('[data-doc-search-bar] input').fill('苹果');
+    if (editor) await page.locator('[data-doc-search-bar] input').fill('苹果');
     else await page.getByRole('searchbox').fill('苹果');
     await page.getByText('1/1', { exact: true }).waitFor();
   },

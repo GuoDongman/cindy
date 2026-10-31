@@ -68,6 +68,8 @@ describe('FindInPageBar', () => {
     page.textContent = 'apple in the covered chat';
     const card = document.createElement('section');
     card.dataset.textLightboxCard = '';
+    card.dataset.textLightboxSearchHost = '';
+    card.tabIndex = -1;
     const content = document.createElement('article');
     content.dataset.textLightboxSearchRoot = '';
     content.textContent = 'apple apple';
@@ -107,6 +109,8 @@ describe('FindInPageBar', () => {
     fireEvent.change(input, { target: { value: 'apple' } });
     const card = document.createElement('section');
     card.dataset.textLightboxCard = '';
+    card.dataset.textLightboxSearchHost = '';
+    card.tabIndex = -1;
     const content = document.createElement('article');
     content.dataset.textLightboxSearchRoot = '';
     content.textContent = 'document pear';
