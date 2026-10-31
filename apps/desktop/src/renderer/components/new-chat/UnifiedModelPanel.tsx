@@ -123,6 +123,8 @@ export interface UnifiedSelectedRow {
 export interface UnifiedModelPanelProps {
   /** 「全部」视图且没有搜索词时，列表最上方额外渲染的内容(新任务的「让插件选」)。 */
   pinnedTop?: ReactNode;
+  /** pinnedTop 当前有内容：搜索只命中它时不显示空结果。 */
+  pinnedTopHasRows?: boolean;
   providers: readonly ProviderView[];
   /**
    * 供应商分组的显示顺序(设置 → 模型供应商的拖动序);缺省 = 目录首见序。
@@ -379,6 +381,7 @@ export interface UnifiedModelPanelProps {
  */
 export function UnifiedModelPanel({
   pinnedTop,
+  pinnedTopHasRows = false,
   providers,
   providerOrder,
   agents,
@@ -1486,7 +1489,7 @@ export function UnifiedModelPanel({
             )
           ) : catalogNotice ? (
             catalogNotice
-          ) : !hasRows ? (
+          ) : !hasRows && !(pinnedTopHasRows && effectiveRail.kind === 'all') ? (
             <div className="px-3 py-6 text-center text-13 text-[var(--text-tertiary)]">
               {/* 最近 / ★ 视图的空态是引导语,不是「没有匹配」(设计稿 favEmpty;两格常驻后必经)。 */}
               {!query.trim() && effectiveRail.kind === 'favorites'

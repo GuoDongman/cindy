@@ -18,6 +18,14 @@ export interface PluginModelsPickerProps {
   onSelect(model: GhostPickerModel): void;
 }
 
+/** 跟随选择器搜索框；面板也用它判断搜索有没有结果。 */
+export function matchPluginModels(models: readonly GhostPickerModel[], query: string): readonly GhostPickerModel[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return models;
+  return models.filter((model) =>
+    [model.name, model.description, model.pluginName].some((text) => text?.toLowerCase().includes(needle)));
+}
+
 /** 插件图标：加载不到时回落通用图标由调用方决定是否有 pluginIcon，这里只负责尺寸。 */
 export function PluginModelIcon({ model, size }: { model: GhostPickerModel; size: number }) {
   if (!model.pluginIcon) return <Plug size={size} aria-hidden className="shrink-0 text-[var(--text-secondary)]" />;
@@ -42,11 +50,7 @@ export function PluginModelsSection({
   query: string;
   onPicked(): void;
 }) {
-  const needle = query.trim().toLowerCase();
-  const visible = needle
-    ? picker.models.filter((model) =>
-        [model.name, model.description, model.pluginName].some((text) => text?.toLowerCase().includes(needle)))
-    : picker.models;
+  const visible = matchPluginModels(picker.models, query);
   const groups = new Map<string, GhostPickerModel[]>();
   for (const model of visible) groups.set(model.pluginId, [...(groups.get(model.pluginId) ?? []), model]);
   if (groups.size === 0) return null;

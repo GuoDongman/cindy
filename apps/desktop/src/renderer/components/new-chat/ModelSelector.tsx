@@ -75,7 +75,7 @@ import {
   type UnifiedModelPanelProps,
   type UnifiedSelectedRow,
 } from './UnifiedModelPanel';
-import { PluginModelIcon, PluginModelsSection, type PluginModelsPickerProps } from './PluginModelsSection';
+import { matchPluginModels, PluginModelIcon, PluginModelsSection, type PluginModelsPickerProps } from './PluginModelsSection';
 import { stopWheelPropagation } from '@/lib/stopWheelPropagation';
 import type { ProviderGroupUsageOf, ProviderUsageScope } from './useProviderWeeklyQuota';
 import { ThinkingToggle } from './ThinkingToggle';
@@ -3566,7 +3566,10 @@ function ModelSelectorContentView({
           </div>
           {localCatalogNotice && <div className="shrink-0 p-2">{localCatalogNotice}</div>}
           <UnifiedModelPanel
-            {...(pluginModels ? { pinnedTop: <PluginModelsSection picker={pluginModels} query={query} onPicked={() => onDismiss?.()} /> } : {})}
+            {...(pluginModels ? {
+              pinnedTop: <PluginModelsSection picker={pluginModels} query={query} onPicked={() => onDismiss?.()} />,
+              pinnedTopHasRows: matchPluginModels(pluginModels.models, query).length > 0,
+            } : {})}
             {...(!remoteAgent && deviceId && (remoteModelListStatus === 'loading' || remoteModelListStatus === 'error')
               ? {
                   catalogNotice: (
