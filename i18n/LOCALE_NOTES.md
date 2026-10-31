@@ -54,6 +54,21 @@ macOS 资源测试实测 UTF-16 文本保留、地区目录和重复打包；编
   rebase 后两端类型检查、文档检查和测试规范门禁通过。
   插件编写手册更新同步递增内置 Skill bundle 版本，确保已安装副本收到新版说明。
 
+### 已修复上述既有检查问题（2026-10-31，用户要求）
+
+- 分支话题检查改为通过朗读按钮定位实际的气泡下操作栏，保留列宽断言，并检查操作栏在气泡下方、
+  列内和可见视口内；仍实际点击朗读／停止，没有删除交互断言。
+- Z.AI Coding Plan 地址在 Registry interfaceProfiles 中同时属于两个产品的输入地址。
+  UI 检查补充这一明确的歧义预期，继续验证不自动跳转；没有调用被测匹配器生成预期，也未修改供应商识别逻辑。
+- `cargo fmt --manifest-path apps/desktop/cindy-updater/src-tauri/Cargo.toml --check` 已通过。
+  仅格式化 installation_version.rs、installer.rs、pid_wait.rs，并将易触发异常缩进的尾部注释移到独立行。
+- `pnpm ui:check --page chat-fork --case all --theme all` 10/10 通过；
+  provider-template-catalog 的 default、两产品直接向导和各自两个地址、两种主题共 14/14 通过，
+  包含原先失败的 4 组。已查看话题浅色／深色及地址歧义页面截图。
+- `pnpm --filter @cindy/model-providers exec vitest run src/__tests__/providerDetection.test.ts src/__tests__/providerDetectionBinding.test.ts`
+  共 162 项通过；Desktop 类型检查和文档检查通过。话题 UI 检查总耗时 16.1 秒，供应商 UI 检查总耗时 34.9 秒。
+  未重跑全部 1,306 组 UI 检查，也未执行真实更新安装。
+
 ## 之前的法语、西班牙语复核（PR #8166）
 
 本分支已对齐 main `f283ccebd3`。main 已通过 #8157 和 #8163 接入并补齐
