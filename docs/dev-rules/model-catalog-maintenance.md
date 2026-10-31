@@ -2,6 +2,14 @@
 
 > 权威入口：先读本页，再按问题打开专题。Server 为独立仓库，文档不代表已部署。
 
+## 本地模型说明的客户端译文
+
+`packages/model-providers/src/localModelDescriptions.json` 为现有本地模型的英文说明提供
+法语、西语、德语、葡语（葡萄牙／巴西）译文，不是模型目录正本。展示入口统一用
+`localModelDescription`：活动目录的对应语言优先，其次仅按完全一致的英文原文匹配附带译文，
+否则回退英文。更新目录原文后必须重新校对译文，不能按模型 ID 套用旧说明。
+此补齐不改变目录 revision、型号、推荐排序或参数；不代表独立 Server 已下发十语字段。
+
 ## Cindy AI 身份图标
 
 供应商 ID 仍为 `xd`；个人、其他企业和未知身份默认使用 Chrome 插件的 Cindy 剪影。

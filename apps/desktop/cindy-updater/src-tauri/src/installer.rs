@@ -863,7 +863,7 @@ fn terminate_appdir_processes<F: FnMut(InstallerEvent)>(app_dir: &Path, emit: &m
     ));
     emit(InstallerEvent::Phase(
         Phase::Waiting,
-        "等待残留进程退出…".into(),
+        "waitProcesses".into(),
     ));
 
     let grace_start = Instant::now();
@@ -878,7 +878,7 @@ fn terminate_appdir_processes<F: FnMut(InstallerEvent)>(app_dir: &Path, emit: &m
 
     emit(InstallerEvent::Phase(
         Phase::Waiting,
-        "结束残留进程…".into(),
+        "stopProcesses".into(),
     ));
     for (pid, name) in &lingering {
         if let Some(p) = sys.process(sysinfo::Pid::from_u32(*pid)) {

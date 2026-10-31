@@ -1279,7 +1279,8 @@
     "handoffEnded": "Ce transfert de saisie est déjà terminé ; il n'y a donc aucune fenêtre à afficher.",
     "handoffUnavailable": "Cet ordinateur ne peut pas afficher uniquement cette fenêtre. Mettez-y Cindy à jour, ou activez-y le bureau à distance.",
     "handoffWindow": "Transfert de saisie · {{app}}",
-    "idleMinutes_many": "{{count}} minutes"
+    "idleMinutes_many": "{{count}} minutes",
+    "inputUnsupported": "Cindy ne prend pas en charge le contrôle à distance du clavier et de la souris dans l’environnement de bureau actuel de cet ordinateur."
   },
   "ipcError": {
     "SSH_HARNESS_SWITCH_UNSUPPORTED": "Cette tâche SSH ne peut pas changer de Harness. Choisissez un modèle dans son Harness actuel, ou créez une nouvelle tâche SSH avec le Harness souhaité.",
@@ -17890,6 +17891,14 @@
       "pendingTurns_many": "{{count}} échanges",
       "lastLearned_many": "{{count}} modifications",
       "readTurns_many": "{{count}} échanges lus"
+    },
+    "remote": {
+      "pause": "Suspendre la routine",
+      "resume": "Reprendre la routine",
+      "addSchedule": "Ajouter un horaire",
+      "addInterval": "Ajouter un intervalle",
+      "addEvent": "Ajouter un déclencheur d’événement",
+      "filterField": "Champ de filtre"
     }
   },
   "cindyMakeDoctor": {
