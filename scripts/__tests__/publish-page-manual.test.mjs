@@ -52,6 +52,7 @@ function buildInfoArg(repoRoot, fields = {}) {
     versionless: false,
     region: 'global',
     commitSha: COMMIT,
+    mcpAppsManual: { sha256: MANUAL_SHA, size: Buffer.byteLength(MANUAL) },
     ...fields,
   }));
   return `--build-info=${file}`;
@@ -132,7 +133,7 @@ test('dry-run 按版本号与手册 sha256 拼出各区域的 key 与 CDN 地址
 test('发版提交里没有手册时跳过并打印原因，不连 OSS', async () => {
   const repoRoot = fixture({ withManual: false });
   const d = deps(repoRoot);
-  const result = await runPublishPageManual([buildInfoArg(repoRoot)], d);
+  const result = await runPublishPageManual([buildInfoArg(repoRoot, { mcpAppsManual: null })], d);
   assert.equal(result.status, 'skipped');
   assert.equal(d.logs.length, 1);
   assert.match(d.logs[0], /跳过.*PAGE-GENERATION\.md/);
@@ -148,6 +149,11 @@ test('参数、build-info 或检出不符合发布条件时拒绝执行', async 
     ['非法区域', {}, (r) => [buildInfoArg(r, { region: 'eu' }), '--dry-run'], /region/],
     // 错的检出里没有手册时也必须失败，不能当成「这个包没有手册」跳过。
     ['commitSha 与当前检出不一致', { withManual: false }, (r) => [buildInfoArg(r, { commitSha: 'b'.repeat(40) })], /发版提交上执行/],
+    // 上传的必须是安装包里实际打进去的那份手册（build-info.mcpAppsManual，打包时写入）。
+    ['旧打包脚本产出的 build-info 缺少 mcpAppsManual', {}, (r) => [buildInfoArg(r, { mcpAppsManual: undefined }), '--dry-run'], /缺少 mcpAppsManual/],
+    ['仓库手册与包内手册的 sha256 不一致', {}, (r) => [buildInfoArg(r, { mcpAppsManual: { sha256: 'e'.repeat(64), size: 9 } }), '--dry-run'], /不一致/],
+    ['包内没有手册，检出里却有', {}, (r) => [buildInfoArg(r, { mcpAppsManual: null }), '--dry-run'], /不一致/],
+    ['包内有手册，检出里却没有', { withManual: false }, (r) => [buildInfoArg(r), '--dry-run'], /内置了手册/],
     ['拼错的 --dryrun 不能落到真实发布', {}, (r) => [buildInfoArg(r), '--dryrun'], /未知参数/],
     ['同时 --dry-run 与 --check-cdn', {}, (r) => [buildInfoArg(r), '--dry-run', '--check-cdn'], /不能同时/],
   ]) {

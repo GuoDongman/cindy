@@ -12,7 +12,8 @@
 // 版本号、区域和发版提交都从 package-desktop.mjs 产出的 build-info.json 读取（仓库里
 // apps/desktop/package.json 的版本是占位的 0.0.0，打包时才临时写入真实版本）。版本无关包
 // （version 为 null）不发布；build-info 的 commitSha 必须等于当前检出的 HEAD，且手册没有
-// 未提交改动，保证上传的是这个包发版提交里的手册。对每个区域的 build-info.json 各执行一次：
+// 未提交改动；手册的 sha256 / size 还必须等于 build-info.mcpAppsManual（打包时从安装包里
+// 读出的那份），保证上传的就是这个包内置的手册。对每个区域的 build-info.json 各执行一次：
 //
 //   node --env-file=<发布配置> scripts/publish-page-manual.mjs --build-info=<build-info.json>
 //   node scripts/publish-page-manual.mjs --build-info=<build-info.json> --dry-run    只打印，不连 OSS、不联网
@@ -87,7 +88,18 @@ export function readBuildInfo(buildInfoPath) {
   if (typeof buildInfo.commitSha !== 'string' || !buildInfo.commitSha) {
     throw new Error(`${buildInfoPath} 缺少 commitSha`);
   }
-  return { version: buildInfo.version, region: buildInfo.region, commitSha: buildInfo.commitSha };
+  // 打包时记录的安装包内手册（package-desktop.mjs 写入；没有内置手册时为 null）。
+  const packaged = buildInfo.mcpAppsManual;
+  if (packaged === undefined) {
+    throw new Error(`${buildInfoPath} 缺少 mcpAppsManual 字段（旧版打包脚本产出），请用当前 package-desktop.mjs 重新打包`);
+  }
+  if (packaged !== null && (
+    typeof packaged !== 'object' || !/^[0-9a-f]{64}$/.test(packaged.sha256 ?? '') ||
+    !Number.isSafeInteger(packaged.size) || packaged.size < 0
+  )) {
+    throw new Error(`${buildInfoPath} 的 mcpAppsManual 不合法`);
+  }
+  return { version: buildInfo.version, region: buildInfo.region, commitSha: buildInfo.commitSha, packagedManual: packaged };
 }
 
 function defaultDeps() {
@@ -180,7 +192,7 @@ async function verifyCdn(fetchImpl, manual, log) {
 
 export async function runPublishPageManual(argv, deps = defaultDeps()) {
   const { buildInfoPath, mode } = parsePublishPageManualArgs(argv);
-  const { version: appVersion, region, commitSha } = readBuildInfo(buildInfoPath);
+  const { version: appVersion, region, commitSha, packagedManual } = readBuildInfo(buildInfoPath);
   // 先核对检出：错的检出不能被当成「这个包没有手册」静默跳过。
   const head = deps.git.head(deps.repoRoot);
   if (head !== commitSha) {
@@ -192,11 +204,18 @@ export async function runPublishPageManual(argv, deps = defaultDeps()) {
   }
   const manualFile = path.join(deps.repoRoot, MANUAL_REPO_PATH);
   if (!fs.existsSync(manualFile)) {
+    if (packagedManual) throw new Error(`这个包内置了手册，但当前检出里没有 ${MANUAL_REPO_PATH}`);
     deps.log(`跳过：这个包的发版提交里没有 PAGE-GENERATION.md（${MANUAL_REPO_PATH}）`);
     return { status: 'skipped' };
   }
   const body = fs.readFileSync(manualFile);
   const digest = sha256(body);
+  // 上传的必须是安装包里实际打进去的那份字节。
+  if (!packagedManual || packagedManual.sha256 !== digest || packagedManual.size !== body.length) {
+    throw new Error(
+      `仓库里的手册（sha256 ${digest}）与这个包内置的手册（${packagedManual ? `sha256 ${packagedManual.sha256}` : '无'}）不一致，不发布`,
+    );
+  }
   const relative = pluginPageManualCdnPath(appVersion, digest);
 
   let prefix;

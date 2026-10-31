@@ -15,7 +15,7 @@ import {
 } from '@cindy/plugin-protocol';
 import { PLUGIN_STORAGE_PART_RE } from './pluginStoragePartPattern.js';
 import { PLUGIN_TASK_PERMISSION_MODES } from './pluginTasks.js';
-import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type SupportedLocale } from './locale';
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, isClassicalLocale, modernLocaleOf, type SupportedLocale } from './locale';
 
 /**
  * 意识(Ghost,.cindy 文件)的清单数据模型与校验 —— main / renderer 共用。
@@ -3553,14 +3553,15 @@ function dropEmptyLegacyCapabilitySlots(
   });
 }
 
-/** 当前宿主语言在插件未提供时固定回退英文。 */
+/** 文言界面使用对应现代语言资源；插件未提供时固定回退英文。 */
 export function ghostLocalePathFor(
   manifest: GhostManifest,
   locale: string | undefined | null,
 ): string | null {
   if (!manifest.locales) return null;
-  const manifestLocale = (GHOST_LOCALES as readonly string[]).includes(locale ?? '')
-    ? locale as GhostLocale
+  const resourceLocale = isClassicalLocale(locale) ? modernLocaleOf(locale) : locale;
+  const manifestLocale = (GHOST_LOCALES as readonly string[]).includes(resourceLocale ?? '')
+    ? resourceLocale as GhostLocale
     : null;
   return (
     (manifestLocale ? manifest.locales[manifestLocale] : undefined) ?? manifest.locales.en ?? null
@@ -3568,10 +3569,16 @@ export function ghostLocalePathFor(
 }
 
 /** 插件 app-context 只暴露协议旧四语；宿主新增语言固定回退英文以兼容存量插件。 */
-export function ghostAppContextLocale(locale: string | undefined | null): GhostLocale {
-  return (GHOST_LOCALES as readonly string[]).includes(locale ?? '')
-    ? (locale as GhostLocale)
+const GHOST_APP_CONTEXT_LOCALES = ['zh-CN', 'en', 'ja', 'ko'] as const;
+export function ghostAppContextLocale(locale: string | undefined | null): (typeof GHOST_APP_CONTEXT_LOCALES)[number] {
+  return (GHOST_APP_CONTEXT_LOCALES as readonly string[]).includes(locale ?? '')
+    ? (locale as (typeof GHOST_APP_CONTEXT_LOCALES)[number])
     : 'en';
+}
+
+/** Shared by /app-context and host-context-changed; authored plugin resources use modern locales. */
+export function ghostAppContextLanguages(locale: SupportedLocale) {
+  return { locale: ghostAppContextLocale(locale), uiLocale: modernLocaleOf(locale) };
 }
 
 /** 把当前宿主语言附到运行时清单视图；不支持的输入固定归一到英文。 */
@@ -7549,7 +7556,9 @@ export interface GhostAppContextResult {
   context: {
     region: GhostAppRegion;
     /** 插件协议语言；宿主新增语言会在边界回退英文。 */
-    locale: GhostLocale;
+    locale: ReturnType<typeof ghostAppContextLocale>;
+    /** Modern UI language for authored plugin resources; optional for older hosts. */
+    uiLocale?: SupportedLocale;
   };
 }
 
@@ -8953,6 +8962,54 @@ export const GHOST_FETCH_UPLOAD_MAX_BYTES_PER_FILE = 64 * 1024 * 1024;
 export const GHOST_FETCH_UPLOAD_MAX_TOTAL_BYTES = 128 * 1024 * 1024;
 /** 上传:multipart 字段名形状(缺省 'file')。 */
 export const GHOST_FETCH_UPLOAD_FIELD_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/* ── 对话文件交接(ghost_call.attachments 的非媒体文件):宿主保存副本,插件只拿引用 ──
+ * 目标工具的参数表声明 GHOST_HANDOFF_FILES_ARG 才启用;字节不进沙箱,插件用
+ * upload.handoff 上传,页面经签发的只读地址读取。副本 7 天后由宿主删除。 */
+
+/** 宿主保留的工具参数名:声明即启用,值由宿主注入(模型或页面自带的值被剥除)。 */
+export const GHOST_HANDOFF_FILES_ARG = 'cindy_handoff_files';
+/** 交接引用:`handoff:<uuid>`,只在交接给的那个插件实例里有效。 */
+export const GHOST_HANDOFF_REF_RE = /^handoff:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+/** 副本连续未使用多久后删除:每次使用(签发、页面读取、上传成功)从那一刻重新起算。 */
+export const GHOST_HANDOFF_TTL_MS = 7 * 24 * 60 * 60_000;
+/** 同一副本两次续期写盘的最小间隔,控制元数据写入次数。 */
+export const GHOST_HANDOFF_RENEW_INTERVAL_MS = 60 * 60_000;
+/** 单次交接、单个文件、整批的上限(与 upload 通道同值,超出也传不出去)。 */
+export const GHOST_HANDOFF_MAX_FILES = 4;
+export const GHOST_HANDOFF_MAX_BYTES_PER_FILE = 64 * 1024 * 1024;
+export const GHOST_HANDOFF_MAX_BATCH_BYTES = 128 * 1024 * 1024;
+/** 每个插件实例的配额:满了拒绝新交接,不挤掉尚未处理的旧文件。 */
+export const GHOST_HANDOFF_QUOTA_BYTES = 512 * 1024 * 1024;
+export const GHOST_HANDOFF_QUOTA_FILES = 200;
+/** 副本过期或已被删除时,上传与读取返回的稳定失败码。 */
+export const GHOST_HANDOFF_UNAVAILABLE = 'HANDOFF_UNAVAILABLE';
+
+/**
+ * 工具参数表显式把保留参数声明为数组,才接收对话文件交接;同名但其它形态的
+ * 存量业务参数保持原行为。
+ */
+export function ghostToolDeclaresHandoff(tool: GhostToolDecl | undefined): boolean {
+  const properties = tool?.parameters?.properties;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties) ||
+      !Object.prototype.hasOwnProperty.call(properties, GHOST_HANDOFF_FILES_ARG)) return false;
+  const schema = (properties as Record<string, unknown>)[GHOST_HANDOFF_FILES_ARG];
+  return Boolean(schema && typeof schema === 'object' && (schema as { type?: unknown }).type === 'array');
+}
+
+/** 注入 args[GHOST_HANDOFF_FILES_ARG] 的单项,也是设置页列表的单项。 */
+export interface GhostHandoffFile {
+  ref: string;
+  /** 原文件名,只用于显示;不含路径。 */
+  name: string;
+  mimeType: string;
+  size: number;
+  sha256: string;
+  /** 毫秒时间戳。 */
+  createdAt: number;
+  /** 当前到期时间(最后一次使用 + 7 天);使用时会顺延,不是固定截止时间。 */
+  expiresAt: number;
+}
 /** 总仓指纹形状(64 位十六进制,与 blobStore 同口径)。 */
 export const GHOST_MEDIA_HASH_RE = /^[a-f0-9]{64}$/;
 
@@ -9432,9 +9489,10 @@ export interface GhostPipeFetchRequest {
    * 十六进制指纹);field 为每个文件的表单字段名,缺省 'file';fields 为
    * 随行普通表单字段(在文件段之前;值里的字面量 "{bytes}" 由主机替换成
    * 全部上传文件的总字节数——飞书 upload_all 这类要求 size 字段的服务用,
-   * 2026-07-16 lizi_feishu 意识化前置)。
+   * 2026-07-16 lizi_feishu 意识化前置)。hashes / library / handoff 三选一;
+   * handoff 为 `handoff:<uuid>` 交接引用(见 GHOST_HANDOFF_FILES_ARG)。
    */
-  upload?: { hashes?: string[]; library?: string[]; field?: string; fields?: Record<string, string> };
+  upload?: { hashes?: string[]; library?: string[]; handoff?: string[]; field?: string; fields?: Record<string, string> };
   /**
    * 目录上传通道(仅 POST;与 body / upload 互斥):把主机过户票据指向的
    * 本地目录整体以 multipart/form-data 上传——token 来自 ghost_call 顶层
@@ -9482,6 +9540,11 @@ export interface GhostPipeFetchRequest {
    * 复用 Agent 授权；自主调用可省略并按 network 声明守门。
    */
   callId?: string;
+  /**
+   * 是否带 Cindy-MCP-Apps-Manual / -Sha256 请求头：缺省时仅 callId 对应工具在
+   * mcpApps.ui 中对模型可见才带；true 强制带，false 强制不带。只发往已声明主机。
+   */
+  mcpAppsManual?: boolean;
 }
 
 /** 代理 fetch 的返回(cindy.send 的 resolve 值)。 */

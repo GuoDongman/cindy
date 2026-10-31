@@ -149,7 +149,18 @@ Library 请求同时绑定迁移代次和安装批准，根解析、排队及开
   `browser-extension-relay` 事件转交给声明插件，插件经 `browser-extension-request` 投递作业、
   推送配对身份。不设站点名单（2026-10-30 决定：安全交给任务的权限档位与自动审核，与专用浏览器
   一致）；旧插件仍推送的 `setPolicy` 照常应答但不生效。本机与私网地址和公网网站一样可访问
-  （2026-10-28 决定）。新增 id 或新增 `pageControl` 视为权限变多，删减视为收权。
+  （2026-10-28 决定）。「我的浏览器」的能力对齐专用浏览器（截图、上传、evaluate、控制台、
+  网络事件、弹窗、坐标与拖拽、resize），底线只有不打扰用户（Agent 页面开在不抢焦点的 Cindy
+  窗口、截图不切走用户正在看的标签页、resize 只动 Cindy 窗口）和防冒充；不限制 Agent 能力：
+  扩展不按字段类型拦截，密码／支付／验证码输入框与其它输入框一样可以被执行端操作，其余风险交给
+  任务权限档位与自动审核（2026-10-30 决定，共同规则见 [Browser Use](browser-use.md)）。这不放宽
+  [代输入](../product-rules/input-handoff.md)边界：登录密码、验证码等需要主人填写的值仍由
+  `ask_owner` 交给主人，主人填的值只交给宿主执行、不进模型上下文、工具结果与日志，任务权限档位和
+  自动审核不能代替这条边界。Chrome 调试接口（PDF、读 Cookie、抓包等配方）
+  按需申请可选权限：首次需要时在用户窗口打开说明页、十分钟内最多一次、用后断开，开关放
+  扩展自己的选项页，不进 Cindy 设置；新增权限不得改变 Chrome 的安装提示（`<all_urls>` 可加，
+  `tabGroups` 只能做可选权限）。Agent 操作的页面显示红光边框与「Cindy 正在自动操作此页面」
+  标签，保持到最后一次动作后约 20 秒。新增 id 或新增 `pageControl` 视为权限变多，删减视为收权。
 - 无配置的布尔能力只接受字面量 `true`：`notify`、`badge`、`confirm`、`fs`、`library`、
   `sessionContext`、`pick`、`workspace`。不用就省略，写 `false` 是无效清单。
 - `card: {}` 与 `agent: {}` 分别表示基础卡片能力和由真实用户点击触发 Agent 回合；
@@ -472,6 +483,11 @@ Library 请求同时绑定迁移代次和安装批准，根解析、排队及开
   给沙箱。Agent 在途调用可凭严格 `callId` 访问未预声明的普通 HTTPS 地址，仍须通过
   主机 URL、SSRF、超时、体积与重定向守门。此途径不注入任何未在 manifest 中声明且
   未命中目标 host 的托管凭证。
+- 沙箱 `cindy.fetch` 可由 Host 附加《Cindy MCP Apps 页面生成手册》的 `Cindy-MCP-Apps-Manual` /
+  `Cindy-MCP-Apps-Manual-Sha256` 请求头（`mcpAppsManualHeaders.ts`）：缺省仅当 callId 对应的在途工具在
+  `mcpApps.ui.tools` 中对模型可见时带上，`mcpAppsManual: true | false` 显式覆盖。它不是凭证，但与凭证头同样
+  逐跳只发往 `network.hosts` / 连接地址中已声明的主机，插件自带的同名头（不区分大小写）一律剥除；版本无关
+  （0.0.0）或找不到内置手册时不带。Node 工作进程的请求不带，只剥除同名头。
 - `source: "gh-cli"` 是只为官方 `cindy-github` 保留的宿主凭证来源：Host 优先读取
   本机 `gh auth token`，不可用时才回落到同 key 经 `/secrets` 保存的 PAT。两种 token
   均只在 Main 的 networkSlot 或受信本机账号检查中注入 `api.github.com` 的
@@ -612,6 +628,16 @@ Library 请求同时绑定迁移代次和安装批准，根解析、排队及开
   并在票据库内重新解析核对，路径映射已变化时拒绝并要求重新确认。出票后真正读／写时仍须
   再次核对根与目标真身；保存文件必须排他创建且不跟随最终 symlink，不能让短命票据留下消费期
   TOCTOU。附件继续使用裁决前已读入的字节，不得在批准后重新跟随原始路径。
+- 对话文件交接：目标工具参数表把保留参数 `cindy_handoff_files` 声明为数组时，`ghost_call.attachments`
+  里的本地非媒体文件不进媒体仓，由 Host 存一份副本到 `owners/<账号>/ghost-handoff/<实例键>/`，
+  插件只收到 `handoff:<uuid>` 引用（`args.cindy_handoff_files`），未声明的工具行为不变。
+  该参数只由 Host 注入，模型或页面自带的同名值一律剥除。限额与配额（4 个／64 MiB／128 MiB；
+  每实例 512 MiB／200 个）在弹卡前判定；确认沿用附件两层策略（lane=`handoff`，不做目录会话
+  记忆，自动放行不写人工授权），落盘的是裁决前读入的字节。副本只能经 `upload.handoff` 出网（按交出时的大小有界读取，文件被改长或改短即拒绝），
+  或由本卡页面经签发的只读地址读取；插件不能读取字节或删除副本。副本连续 7 天未使用后由 Host 删除
+  （签发页面地址、页面读取、上传成功算使用，同一副本每小时最多续期写盘一次；`expiresAt` 是当前到期时间、
+  会顺延，不是固定截止时间；访问时、启动后延迟及切换账号时清理），用户可在插件详情页逐个删除，或在访达／资源管理器中打开副本目录（按清理后的原文件名存放）；卸载删除、换源随
+  归档实例键搬走（副本已落盘、派发未结束时换源等待；换源期间新的交接直接报错）。Node 工作进程不开放。回归见 `handoffStore.test.ts` 与 `ghostWorkdirGate.test.ts`。
 - 媒体模型接入分成两层：插件声明并封装业务能力，Cindy Core 提供低级目录和调用能力。
   插件设置页／panel 只能通过同源只读 `/media-models?type=image|video` 配置模型；Host 按
   Gateway `mode` 切图片／视频大类，并结合插件 `cindy.image/video` 声明、Gateway
@@ -815,8 +841,8 @@ Host receipt 的 `simulatorPreviousRelId` 只允许这对 ID 和 root 路径，�
 （`PAGE-GENERATION.md`）时，还要在对应客户端上线前把新手册发布到各区域 CDN，用法与发版前检查见
 [`media-storage-and-protocols.md`](media-storage-and-protocols.md) 的《Cindy MCP Apps 页面生成手册》一条。
 手册 CDN 路径带客户端版本号与 sha256（`mcp-apps/manual/<版本号>/<sha256>.md`），发布脚本从打包产出的
-`build-info.json` 读取版本号、区域与发版提交；开发版（0.0.0）没有发布的手册。客户端把手册地址交给插件目前暂不启用；启用后每个发版版本都必须发布，否则该版本
-拿到的地址会 404，因此上线那部分前要先把发布接进发版流程。
+`build-info.json` 读取版本号、区域与发版提交；开发版（0.0.0）没有发布的手册。客户端在 `cindy.fetch` 中自动带手册地址（见第 4 节）后，每个发版版本、每个区域都
+必须发布，否则该版本带出去的地址会 404，因此带地址的客户端上线前要先把发布接进发版流程。
 **手册过期 = AI 按旧规则写出过不了校验的插件包**（校验拒装只是兜底，用户体验是“AI
 反复打包反复被拒”）。
 
