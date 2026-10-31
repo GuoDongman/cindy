@@ -641,6 +641,110 @@ describe('Chat Server result delivery and refresh', () => {
     expect(fixture.handle.mock.calls.filter(([route, method]) => route.endsWith('/messages') && method === 'POST')).toHaveLength(1);
   });
 
+  // Thread attachment regression: real reply entry, injected byte preparation/transport.
+  // Existing send tests covered only main-chat media. Unit tier: image-only reply + failed POST.
+  it('uploads image-only thread replies and settles media references on failure and retry', async () => {
+    const commit = vi.fn(), discard = vi.fn();
+    const attachment = { id: 'image', name: 'photo.png', category: 'image' as const,
+      mimeType: 'image/png', size: 12, url: 'cindy-media://blobs/photo.png', path: '/fixture/photo.png', ext: '.png' };
+    const media = { type: 'media' as const, mediaId: '80000000-0000-4000-8000-000000000001', caption: 'photo.png' };
+    deps.prepareAttachments = vi.fn(async () => ({ ok: true as const, attachments: [attachment], commit, discard }));
+    fixture.upload.mockResolvedValue([media]);
+    let fail = true;
+    fixture.handle.mockImplementation((route, method) => {
+      if (route.endsWith('/members')) return { body: [] };
+      if (route.endsWith('/messages') && method === 'POST') return fail
+        ? { status: 500, body: { error: { code: 'UPSTREAM_FAILED' } } }
+        : { body: { id: 'saved-image-reply' } };
+      return response(route);
+    });
+    const input = { groupId: roomId, rootId: '70000000-0000-4000-8000-000000000001',
+      text: '', clientId: 'thread-image-1', mentions: { all: false, botIds: [] }, attachments: [attachment] };
+    expect(await service.chatServer!.reply(input)).toMatchObject({ ok: false });
+    // A 5xx does not prove the POST was refused; retain the original upload for retry.
+    expect(discard).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    fail = false;
+    expect(await service.chatServer!.reply(input)).toEqual({ ok: true, messageId: 'saved-image-reply' });
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(discard).not.toHaveBeenCalled();
+    expect(deps.prepareAttachments).toHaveBeenCalledOnce();
+    expect(fixture.upload).toHaveBeenCalledOnce();
+    expect(fixture.upload).toHaveBeenLastCalledWith(roomId, input.clientId, [attachment], selfId);
+    const posts = fixture.handle.mock.calls.filter(([route, method]) => route.endsWith('/messages') && method === 'POST');
+    expect(posts.map(([, , body]) => body)).toEqual([0, 1].map(() => ({
+      operationId: input.clientId, threadRootId: input.rootId, content: [media], mentions: [],
+    })));
+  });
+
+  // Review regression: a lost ACK followed by a changed/deleted local file must replay the
+  // uploaded body. Unit tier at reply's production entry; ordinary retry/ref settlement is above.
+  it.each(['changed', 'deleted'] as const)('replays an uncertain thread attachment POST after its source is %s', async source => {
+    const attachment = { id: 'file', name: 'notes.md', category: 'text' as const,
+      mimeType: 'text/markdown', size: 12, url: null, path: '/fixture/notes.md', ext: '.md' };
+    deps.prepareAttachments = vi.fn(async () => ({ ok: true as const, attachments: [attachment], commit: vi.fn(), discard: vi.fn() }));
+    let sourceVersion = 'original';
+    // The real uploader hashes source bytes into its media operation id and rejects missing files.
+    fixture.upload.mockImplementation(async () => {
+      if (sourceVersion === 'deleted') throw new Error('ATTACHMENT_UNAVAILABLE');
+      return [{ type: 'media', mediaId: sourceVersion, caption: attachment.name }];
+    });
+    let committed: unknown;
+    fixture.handle.mockImplementation((route, method, body) => {
+      if (route.endsWith('/members')) return { body: [] };
+      if (route.endsWith('/messages') && method === 'POST') {
+        if (!committed) {
+          committed = structuredClone(body);
+          throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+        }
+        return JSON.stringify(body) === JSON.stringify(committed)
+          ? { body: { id: 'saved-file-reply' } }
+          : { status: 409, body: { error: { code: 'OPERATION_CONFLICT' } } };
+      }
+      return response(route);
+    });
+    const input = { groupId: roomId, rootId: '70000000-0000-4000-8000-000000000001', text: '',
+      clientId: 'thread-file-uncertain', mentions: { all: false, botIds: [] }, attachments: [{ ...attachment, url: undefined }] };
+    expect(await service.chatServer!.reply(input)).toMatchObject({ ok: false });
+    sourceVersion = source;
+    expect(await service.chatServer!.reply(input)).toEqual({ ok: true, messageId: 'saved-file-reply' });
+    // A successful host response can also be lost before the composer receives it.
+    expect(await service.chatServer!.reply(input)).toEqual({ ok: true, messageId: 'saved-file-reply' });
+    expect(fixture.upload).toHaveBeenCalledOnce();
+  });
+
+  // Complement the uncertain-POST case: a failed upload or explicit 400 stored no message,
+  // so it must release its media and permit fresh preparation on the next attempt.
+  it.each(['upload', 'post'] as const)('releases thread media after a definite failure at %s', async stage => {
+    const attachment = { id: 'file', name: 'notes.md', category: 'text' as const,
+      mimeType: 'text/markdown', size: 12, url: null, path: '/fixture/notes.md', ext: '.md' };
+    const commit = vi.fn(), discard = vi.fn();
+    deps.prepareAttachments = vi.fn(async () => ({ ok: true as const, attachments: [attachment], commit, discard }));
+    let fail = true;
+    fixture.upload.mockImplementation(async () => {
+      if (fail && stage === 'upload') throw new Error('ATTACHMENT_UNAVAILABLE');
+      return [{ type: 'media', mediaId: fail ? 'first-upload' : 'fresh-upload', caption: attachment.name }];
+    });
+    fixture.handle.mockImplementation((route, method) => {
+      if (route.endsWith('/members')) return { body: [] };
+      if (route.endsWith('/messages') && method === 'POST') return fail
+        ? { status: 400, body: { error: { code: 'INVALID_INPUT' } } }
+        : { body: { id: 'fresh-file-reply' } };
+      return response(route);
+    });
+    const input = { groupId: roomId, rootId: '70000000-0000-4000-8000-000000000001', text: '',
+      clientId: 'thread-file-refused', mentions: { all: false, botIds: [] }, attachments: [{ ...attachment, url: undefined }] };
+    expect(await service.chatServer!.reply(input)).toMatchObject({ ok: false });
+    expect(discard).toHaveBeenCalledOnce();
+    expect(commit).not.toHaveBeenCalled();
+    fail = false;
+    expect(await service.chatServer!.reply(input)).toEqual({ ok: true, messageId: 'fresh-file-reply' });
+    expect(deps.prepareAttachments).toHaveBeenCalledTimes(2);
+    expect(fixture.upload).toHaveBeenCalledTimes(2);
+    expect(commit).toHaveBeenCalledOnce();
+    expect(discard).toHaveBeenCalledOnce();
+  });
+
   it('reports an HTTP send failure with safe route, code and status', async () => {
     deps.log = { warn: vi.fn() };
     fixture.handle.mockImplementation((route, method) => {
@@ -4430,18 +4534,19 @@ describe('Chat Server directed sends', () => {
   let service: BotGroupChatService;
   let responseMode: 'all' | 'mentioned';
   let nextSendId: number;
+  let mentionAudiences = false, allowAllBots = false;
   let members: Array<{ id: string; kind: string; state: string }>;
   beforeEach(() => {
     vi.useFakeTimers();
-    fixture.packaged = true; responseMode = 'all'; nextSendId = 0;
+    fixture.packaged = true; responseMode = 'all'; nextSendId = 0; mentionAudiences = false; allowAllBots = false;
     fixture.profiles = [{ id: 'local-bot', displayName: 'Bot', status: 'active' }];
     members = [{ id: selfId, kind: 'human', state: 'joined' },
       { id: botId, kind: 'bot', state: 'joined' }, { id: humanId, kind: 'human', state: 'joined' }];
     fixture.handle.mockImplementation((route, method) => {
-      if (route === '/me') return { body: { actor: { id: selfId } } };
+      if (route === '/me') return { body: { actor: { id: selfId }, capabilities: mentionAudiences ? { groupMentionAudiences: 1 } : {} } };
       if (route === '/actors') return { body: [{ id: botId, kind: 'bot', externalId: 'local-bot', name: 'Bot' }] };
       if (route.endsWith('/members')) return { body: members };
-      if (route.endsWith('/snapshot')) return { body: { room: { id: roomId, kind: 'group', response_mode: responseMode }, members, messages: [], cursor: '0' } };
+      if (route.endsWith('/snapshot')) return { body: { room: { id: roomId, kind: 'group', response_mode: responseMode, allow_mention_all_bots: allowAllBots }, members, messages: [], cursor: '0' } };
       if (route.endsWith('/messages') && method === 'POST') return { body: { id: 'posted-message' } };
       return { body: [] };
     });
@@ -4450,10 +4555,43 @@ describe('Chat Server directed sends', () => {
   });
   afterEach(() => { service.dispose(); vi.useRealTimers(); vi.clearAllMocks(); });
   const posts = () => fixture.handle.mock.calls.filter(([route, method]) => route.endsWith('/messages') && method === 'POST');
-  const send = (entry: string, mentions = { all: false, botIds: ['local-bot'] }) => {
+  const send = (entry: string, mentions: { all: boolean; allBots?: boolean; botIds: string[] } = { all: false, botIds: ['local-bot'] }) => {
     const input = { groupId: roomId, text: '@Bot hello', clientId: `directed-send-${++nextSendId}`, mentions };
     return entry === 'thread' ? service.chatServer!.reply({ ...input, rootId }) : service.sendMessage(input);
   };
+
+  // User rule: human and teammate broadcasts must remain distinct on both send routes.
+  it.each(['main', 'thread'])('uses the owner-enabled teammate audience independently in %s', async entry => {
+    mentionAudiences = true;
+    expect(await send(entry, { all: false, allBots: true, botIds: [] })).toMatchObject({ ok: false, errorCode: 'ALL_BOTS_MENTION_DISABLED' });
+    expect(posts()).toEqual([]);
+    expect(await send(entry, { all: true, botIds: [] })).toMatchObject({ ok: true });
+    expect(posts().at(-1)![2]).toMatchObject({ mentions: [humanId], mentionAudience: 'humans' });
+    allowAllBots = true;
+    expect(await send(entry, { all: false, allBots: true, botIds: [] })).toMatchObject({ ok: true });
+    expect(posts().at(-1)![2]).toMatchObject({ mentions: [botId], mentionAudience: 'bots' });
+  });
+
+  // Unit: a lost committed receipt must remain recoverable after the owner closes broadcasts.
+  it('retries a posted teammate broadcast unchanged after its setting is disabled', async () => {
+    mentionAudiences = true; allowAllBots = true;
+    const response = fixture.handle.getMockImplementation()!;
+    let loseReply = true;
+    fixture.handle.mockImplementation((route, method, body) => {
+      if (route.endsWith('/messages') && method === 'POST' && loseReply) {
+        loseReply = false; throw new Error('lost receipt');
+      }
+      return response(route, method, body);
+    });
+    const input = { groupId: roomId, rootId, text: '@All teammates', clientId: 'retry-broadcast',
+      mentions: { all: false, allBots: true, botIds: [] } };
+    expect(await service.chatServer!.reply(input)).toMatchObject({ ok: false });
+    const first = posts()[0]![2];
+    allowAllBots = false;
+    expect(await service.chatServer!.reply(input)).toMatchObject({ ok: true });
+    expect(posts()).toHaveLength(2);
+    expect(posts()[1]![2]).toEqual(first);
+  });
 
   it('maps each owned Chat Server actor back to its local teammate for entry points outside group settings', async () => {
     const result = await service.chatServer!.ownedBots();
@@ -4496,8 +4634,7 @@ describe('Chat Server directed sends', () => {
     for (const all of [false, true]) {
       for (const targets of [[botId], ['local-bot'], [humanId], [selfId], [selfId, humanId, 'local-bot', botId]]) {
         expect(await send(entry, { all, botIds: targets })).toMatchObject({ ok: true });
-        const ids = all ? [botId, humanId]
-          : [...new Set(targets.map(target => target === 'local-bot' ? botId : target))].filter(target => target !== selfId);
+        const ids = [...new Set([...targets.map(target => target === 'local-bot' ? botId : target), ...(all ? [humanId] : [])])].filter(target => target !== selfId);
         expect(posts().at(-1)![2]).toMatchObject({ mentions: ids,
           ...(entry === 'thread' ? { threadRootId: rootId } : {}) });
       }
@@ -4511,7 +4648,7 @@ describe('Chat Server directed sends', () => {
         const before = posts().length;
         expect(await send(entry, mentions)).toMatchObject({ ok: true });
         expect(posts()).toHaveLength(before + 1);
-        expect(posts().at(-1)![2].mentions).toEqual(mentions.all ? [botId, humanId] : []);
+        expect(posts().at(-1)![2].mentions).toEqual(mentions.all ? [humanId] : []);
       }
     }
   });

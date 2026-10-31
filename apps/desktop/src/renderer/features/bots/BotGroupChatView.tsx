@@ -45,7 +45,7 @@ import {
   isDataOwnerPushCurrent,
 } from '@/contexts/dataOwnerGeneration';
 import { useAttachments } from '@/hooks/useAttachments';
-import { discardDraft } from '@/lib/composerDraftStore';
+import { discardDraftTree } from '@/lib/composerDraftStore';
 import {
   classifyUnclassifiedDroppedItems,
   getDroppedFileItems,
@@ -404,6 +404,7 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
           // It must never restore a conversation whose access was just revoked.
           version += 1;
           hasTimeline = false;
+          discardDraftTree(botGroupAttachmentScope(groupId));
           discardOutbox();
           setState({ kind: 'missing' });
         } else {
@@ -498,7 +499,7 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
           queued = null;
           clearRetry();
           // Unsent attachments go with the group (staged copies included).
-          discardDraft(botGroupAttachmentScope(groupId));
+          discardDraftTree(botGroupAttachmentScope(groupId));
           discardOutbox();
           setState({ kind: 'missing' });
           // The authoritative hide can unmount the drawer before its IPC reply.
@@ -553,9 +554,10 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
     name: botGroupMemberDisplayName(member), avatar: member.avatar ?? null, avatarUrl: member.avatarUrl, avatarColor: member.avatarColor ?? null,
   }])), [members]);
   const allLabel = t('bots.groupChat.mention.all');
+  const allBotsLabel = t('bots.groupChat.mention.allBots');
   const mentionLabels = useMemo(
-    () => [allLabel, ...members.flatMap((member) => [member.name, botGroupMemberDisplayName(member), member.nickname || member.displayName || member.name])],
-    [allLabel, members],
+    () => [allLabel, allBotsLabel, ...members.flatMap((member) => [member.name, botGroupMemberDisplayName(member), member.nickname || member.displayName || member.name])],
+    [allLabel, allBotsLabel, members],
   );
 
   const realMessages = useMemo(
@@ -1451,7 +1453,7 @@ function BotGroupChatContent({ groupId, direct }: { groupId: string; direct: boo
         </div>
       ) : null}
       {sharing ? <ShareSelectionBar sessionId={shareScope} barWidth="100%"
-        getContentWidth={() => contentRef.current?.querySelector('article')?.getBoundingClientRect().width ?? 760} /> : group.archived || group.dissolvedAt ? <p className="border-t border-[var(--border-default)] p-4 text-center text-13 text-[var(--text-tertiary)]">{t(group.dissolvedAt ? 'bots.groupChat.lifecycle.dissolved' : 'bots.groupChat.server.settings.archived')}</p> : <BotGroupComposer
+        getContentWidth={() => contentRef.current?.querySelector('article')?.getBoundingClientRect().width ?? 760} /> : group.archived || group.dissolvedAt ? <p className="border-t border-[var(--border-default)] p-4 text-center text-13 text-[var(--text-tertiary)]">{t(group.dissolvedAt ? 'bots.groupChat.lifecycle.dissolved' : 'bots.groupChat.server.settings.archived')}</p> : <BotGroupComposer allowMentionAllBots={group.supportsMentionAudiences === true && group.allowMentionAllBots === true}
         groupId={group.id}
         conversationKind={direct ? 'direct' : undefined}
         draftKey={attachmentScope}
