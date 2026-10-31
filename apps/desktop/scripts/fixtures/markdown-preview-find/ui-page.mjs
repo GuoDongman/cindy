@@ -4,8 +4,8 @@ export default {
   name: 'markdown-preview-find',
   entry: './markdown-preview-find-fixture.tsx',
   viewport: { width: 1040, height: 760 },
-  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar, ChatInput keyboard handling and shortcut ownership',
-  notCovered: 'Installed release, native menus/IME, PDF/draw.io, file/search backends, microphone capture and ASR; file/search data and voice state are controlled fixtures',
+  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar, ChatInput keyboard handling, fullscreen video menus and shortcut ownership',
+  notCovered: 'Installed release, native menus/IME, PDF/draw.io, file/search backends, microphone capture and ASR; file/search data, video bytes and voice state are controlled fixtures',
   stubs: {
     'src/renderer/features/cc-agent/workdir-browse/PdfPreview':
       'export function PdfPreview() { throw new Error("PDF is outside this Markdown fixture"); }',
@@ -34,6 +34,7 @@ export default {
     'outside-focus': { about: 'Escape closes find first even after Tab reaches the backdrop or covered page' },
     'background-project-search': { about: 'The covered project-search sidebar retains its mode and query until the document closes' },
     'background-voice': { about: 'Preview Escape leaves the real composer voice-cancel handler untouched until the document closes' },
+    'fullscreen-video': { about: 'A real fullscreen video menu inside the preview owns Escape before find' },
     'toolbar-tooltip': { about: 'Focused and hovered toolbar tooltips own Escape before document find' },
   },
   async check(page, ui) {
@@ -67,19 +68,33 @@ export default {
       assert.equal(await card.isVisible(), true);
       await page.keyboard.press(findKey);
       await loadingInput.fill('苹果');
-      await page.evaluate(() => window.dispatchEvent(new Event('fixture-preview-ready')));
-      await card.getByText('1/2', { exact: true }).waitFor();
-      // The first result is below the fold: loading must reveal it without
-      // another keystroke that would otherwise skip to the second result.
-      await page.waitForFunction(() => {
-        const root = document.querySelector('[data-text-lightbox-search-root]');
-        const match = [...(CSS.highlights.get('cindy-find-in-page-active') || [])][0];
-        if (!root || !match) return false;
-        const viewport = root.getBoundingClientRect();
-        const rect = match.getBoundingClientRect();
-        return root.scrollTop > 0 && rect.top >= viewport.top && rect.bottom <= viewport.bottom;
-      }, undefined, { timeout: 3000 });
-      await ui.capture('loaded-first-match');
+      const stream = await page.evaluate(() => {
+        const background = document.createElement('p');
+        background.dataset.fixtureStream = '';
+        document.body.append(background);
+        let tokens = 0;
+        return window.setInterval(() => { background.textContent = `streaming ${++tokens}`; }, 20);
+      });
+      try {
+        await page.evaluate(() => window.dispatchEvent(new Event('fixture-preview-ready')));
+        await card.getByText('1/2', { exact: true }).waitFor({ timeout: 3000 });
+        // The first result is below the fold: loading must reveal it without
+        // another keystroke that would otherwise skip to the second result.
+        await page.waitForFunction(() => {
+          const root = document.querySelector('[data-text-lightbox-search-root]');
+          const match = [...(CSS.highlights.get('cindy-find-in-page-active') || [])][0];
+          if (!root || !match) return false;
+          const viewport = root.getBoundingClientRect();
+          const rect = match.getBoundingClientRect();
+          return root.scrollTop > 0 && rect.top >= viewport.top && rect.bottom <= viewport.bottom;
+        }, undefined, { timeout: 3000 });
+        await ui.capture('loaded-first-match');
+      } finally {
+        await page.evaluate(timer => {
+          clearInterval(timer);
+          document.querySelector('[data-fixture-stream]')?.remove();
+        }, stream);
+      }
     }
     await card.getByRole('heading', { name: 'Markdown 查找验证', exact: true }).waitFor();
     const opener = card.getByRole('button', { name: await ui.t('chat.textLightbox.copyAll'), exact: true });
@@ -96,6 +111,26 @@ export default {
       return [...CSS.highlights.get('cindy-find-in-page-match')].every(range => root.contains(range.startContainer));
     }), true);
     await ui.capture('document-search');
+    if (ui.case === 'fullscreen-video') {
+      const video = card.locator('video');
+      await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+      await video.evaluate(player => player.requestFullscreen());
+      await page.waitForFunction(() => document.fullscreenElement?.tagName === 'VIDEO');
+      await video.click({ button: 'right', position: { x: 180, y: 140 } });
+      const menu = card.getByRole('menu');
+      await menu.waitFor();
+      assert.equal(await menu.evaluate(el => Boolean(el.closest('dialog')?.matches(':modal'))), true);
+      await ui.capture('fullscreen-video-menu');
+      await page.keyboard.press('Escape');
+      await menu.waitFor({ state: 'detached' });
+      assert.equal(await input.count(), 1);
+      if (await page.evaluate(() => Boolean(document.fullscreenElement))) {
+        await page.evaluate(() => document.exitFullscreen());
+      }
+      await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('dialog'));
+      await card.getByText('1/2', { exact: true }).waitFor();
+      await ui.capture('video-menu-keeps-search');
+    }
     if (ui.case === 'toolbar-tooltip') {
       for (const interaction of ['focus', 'hover']) {
         if (interaction === 'focus') {

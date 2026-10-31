@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
+import { sampleVideo } from './sample-video';
 import { mountPage, subscription } from '../../ui-page/harness';
 import { TextLightbox } from '../../../src/renderer/components/chat/TextLightbox';
 import { FindInPageBar } from '../../../src/renderer/components/find-in-page/FindInPageBar';
@@ -23,8 +24,19 @@ function VoiceComposer() {
     hideRuntimeControls showFolderPicker={false} disableAutofocus onSend={async () => true} />;
 }
 
-function Fixture({ editor, projectSearch, voice }: { editor: boolean; projectSearch: boolean; voice: boolean }) {
+function Fixture({ editor, projectSearch, voice, video }: { editor: boolean; projectSearch: boolean; voice: boolean; video: boolean }) {
   const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    if (!video) return;
+    // Preserve the managed-media identity used by the real video menu, while
+    // supplying harmless bytes without the full app's protocol handler.
+    const observer = new MutationObserver(() => {
+      const player = document.querySelector('video');
+      if (player?.getAttribute('src')?.startsWith('cindy-media:')) player.src = sampleVideo;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [video]);
   return (
     <>
       <main className="flex h-screen flex-col gap-4 p-6">
@@ -75,9 +87,11 @@ mountPage({
         success: true,
         data: ctx.case === 'nested-mermaid'
           ? markdown.replace('正文中的苹果。', '正文中的苹果。\n\n```mermaid\nflowchart LR\n  A[开始] --> B[结束]\n```')
-          : ctx.case === 'loading-editor'
-            ? markdown.replace('正文中的苹果。', '').replace('| 内容 |', '正文中的苹果。\n\n| 内容 |')
-            : markdown,
+          : ctx.case === 'fullscreen-video'
+            ? markdown.replace('正文中的苹果。', '正文中的苹果。\n\n![示例视频](cindy-media://blobs/ui-video.webm)')
+            : ctx.case === 'loading-editor'
+              ? markdown.replace('正文中的苹果。', '').replace('| 内容 |', '正文中的苹果。\n\n| 内容 |')
+              : markdown,
         size: markdown.length,
       };
     },
@@ -102,5 +116,5 @@ mountPage({
     deviceLink: { onRemotePush: subscription('remote-push') },
     ghosts: { listSync: () => ({ ghosts: [] }) },
   }),
-  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} projectSearch={ctx.case === 'background-project-search'} voice={ctx.case === 'background-voice'} />,
+  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} projectSearch={ctx.case === 'background-project-search'} voice={ctx.case === 'background-voice'} video={ctx.case === 'fullscreen-video'} />,
 });

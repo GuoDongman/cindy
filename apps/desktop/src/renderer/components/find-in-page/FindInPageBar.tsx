@@ -555,7 +555,7 @@ export function FindInPageBar() {
     if (!open || !previewHost) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || isLightboxCovered(previewHost)) return;
-      // Markdown context menus portal outside the card and own their Escape.
+      // Menus own Escape whether portaled to the body or inside fullscreen media.
       const target = event.target;
       const popup = target instanceof Element
         ? target.closest('[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]')
@@ -568,7 +568,7 @@ export function FindInPageBar() {
           document.getElementById(id)?.getAttribute('role') === 'tooltip',
         ),
       );
-      if ((popup && !previewHost.contains(popup)) || hasPreviewTooltip) return;
+      if (popup || hasPreviewTooltip) return;
       if (event.isComposing || event.keyCode === 229) {
         // Leave the IME's default cancellation intact, without dismissing the
         // search or the preview through a later Escape listener.
@@ -651,7 +651,9 @@ export function FindInPageBar() {
     document.addEventListener('mouseout', handlePotentialVisibilityChange);
     document.addEventListener('focusin', handlePotentialVisibilityChange);
     document.addEventListener('focusout', handlePotentialVisibilityChange);
-    observer?.observe(document.body, {
+    // Watch the host before its body mounts, but do not let covered chat
+    // streaming continuously postpone the document's trailing refresh.
+    observer?.observe(previewHost ?? document.body, {
       childList: true,
       characterData: true,
       attributes: true,
@@ -673,7 +675,7 @@ export function FindInPageBar() {
         window.clearTimeout(timer);
       }
     };
-  }, [applySearch, open, text]);
+  }, [applySearch, open, previewHost, text]);
 
   // Global find-in-page shortcut (registry 默认 Ctrl/Cmd+F, 用户可改绑) →
   // open + focus. Capture phase means editable page controls do not swallow
