@@ -137,6 +137,7 @@ export interface GhostInstallReceipt {
    * 批准：插件提前声明 Host 当时还不认识的节点，升级后不会静默生效。
    */
   approvedControlPoints?: string[];
+  observeCapabilityApproved?: true;
   schemaVersion: typeof RECEIPT_SCHEMA_VERSION;
   id: string;
   /** Missing is a pre-namespace receipt. null is root; a string is an organization. */
@@ -1293,6 +1294,7 @@ export function createGhostInstallReceipt(input: {
   unavailableUiResources?: true;
   delegationCapabilityApproved?: true;
   approvedControlPoints?: readonly string[];
+  observeCapabilityApproved?: true;
   manifest: GhostManifest;
   localeResources: Record<string, GhostManifestLocaleResource>;
   enabled: boolean;
@@ -1329,6 +1331,7 @@ export function createGhostInstallReceipt(input: {
     ...(input.targetCapabilityApproved === true ? { targetCapabilityApproved: true as const } : {}),
     ...(input.delegationCapabilityApproved === true ? { delegationCapabilityApproved: true as const } : {}),
     ...approvedControlPointsField(input.approvedControlPoints, input.manifest),
+    ...(input.observeCapabilityApproved === true ? { observeCapabilityApproved: true as const } : {}),
     ...(input.packageSha256 ? { packageSha256: input.packageSha256 } : {}),
     ...(input.iconDataUrl ? { iconDataUrl: input.iconDataUrl } : {}),
     ...(input.installOrigin !== undefined ? { installOrigin: input.installOrigin } : {}),
@@ -1546,6 +1549,7 @@ function validateReceipt(
       ...(value.targetCapabilityApproved === true ? { targetCapabilityApproved: true as const } : {}),
       ...(value.delegationCapabilityApproved === true ? { delegationCapabilityApproved: true as const } : {}),
       ...approvedControlPointsField(value.approvedControlPoints, manifestResult.manifest),
+      ...(value.observeCapabilityApproved === true ? { observeCapabilityApproved: true as const } : {}),
       ...(typeof value.packageSha256 === 'string' ? { packageSha256: value.packageSha256 } : {}),
       ...(typeof value.iconDataUrl === 'string' ? { iconDataUrl: value.iconDataUrl } : {}),
       ...(installOrigin !== undefined ? { installOrigin } : {}),
