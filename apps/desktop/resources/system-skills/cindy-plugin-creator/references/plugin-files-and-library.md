@@ -218,7 +218,8 @@ await cindy.library({
 声明保留参数 `cindy_handoff_files`（`{"type":"array"}`），模型就会把这类文件放进 ghost_call
 的 attachments；宿主保存一份副本，插件收到
 `args.cindy_handoff_files=[{ref:'handoff:<uuid>',name,mimeType,size,sha256,createdAt,expiresAt}]`。
-未声明时非媒体文件照旧要求改用 dir。不需要声明 library。
+未声明时非媒体文件照旧要求改用 dir。不需要声明 library。在这个工具自己的说明里写明「用户在对话里发的
+文件，用 ghost_call 的 attachments 交给本工具」：工具说明离模型的调用决定最近，模型才不会误用 dir。
 
 - 这个参数只由宿主填写：模型或页面自带的同名值会被删掉。页面回传引用请用你自己的参数名。
 - 一次最多 4 个文件，单个 64 MiB、一批 128 MiB；每个插件最多保存 512 MiB / 200 个，满了新交接
