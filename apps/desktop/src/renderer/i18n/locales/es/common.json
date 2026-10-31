@@ -7600,7 +7600,7 @@
         "titleWithStartTask": "Cuándo interviene este complemento",
         "descriptionWithStartTask": "Solo interviene en las tareas donde lo elegiste: antes de una ejecución solo puede omitirla o detenerla, y en una tarea nueva elige un modelo una vez, para el primer mensaje. Nunca aprueba nada por ti.",
         "usage": "Para usarlo, elígelo en Comprobación previa a la ejecución al editar una automatización o rutina.",
-        "usageStartTask": "Para usarlo, elige «Que elija un complemento» en el selector de modelos de una tarea nueva.",
+        "usageStartTask": "Para usarlo, elige un modelo que ofrezca en el selector de modelos de una tarea nueva.",
         "points": {
           "will-schedule-run": "Antes de ejecutar una automatización",
           "will-routine-run": "Antes de ejecutar una rutina de un compañero",
@@ -7682,7 +7682,7 @@
         "subscribeRoutineRun": "Puede comprobar rutinas de compañeros elegidas antes de ejecutarse",
         "subscribeRoutineRunDetail": "Las rutinas en las que lo elijas en Comprobación previa a la ejecución le consultan primero. Ve sus instrucciones y los eventos que las activaron, y puede omitir o detener esa ejecución, pero no aprobar nada por ti.",
         "subscribeStartTask": "Puede elegir el modelo de las tareas nuevas",
-        "subscribeStartTaskDetail": "Si eliges «Que elija un complemento» en una tarea nueva, lee el primer mensaje y elige uno de tus modelos conectados. Decide una sola vez; el modelo no cambia durante la tarea.",
+        "subscribeStartTaskDetail": "Cuando una tarea nueva usa un modelo que ofrece, lee el primer mensaje y elige uno de tus modelos conectados. Elige una sola vez; el modelo no cambia durante la tarea.",
         "card": "Representa tarjetas de mensajes",
         "cardExternalLink": "Las tarjetas pueden declarar enlaces externos que abren su navegador después de la confirmación.",
         "cardExternalLinkDetail": "Al hacer clic en el enlace de una tarjeta se muestra un cuadro de diálogo de confirmación; El URL se abre en el navegador de su sistema solo después de su aprobación. Sólo se permiten direcciones http/https.",
@@ -12131,11 +12131,6 @@
       "addRemoteProject": "Agregar proyecto remoto"
     },
     "modelSelector": {
-      "pluginRouter": {
-        "group": "Complementos",
-        "title": "Que elija un complemento",
-        "detail": "{{name}} elige el modelo al empezar"
-      },
       "displayPricing": {
         "components": {
           "text": "Texto",

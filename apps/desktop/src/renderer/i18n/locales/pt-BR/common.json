@@ -7600,7 +7600,7 @@
         "titleWithStartTask": "Quando este plugin entra em ação",
         "descriptionWithStartTask": "Só entra em ação nas tarefas em que você o escolheu: antes de uma execução, só pode pulá-la ou pará-la; numa tarefa nova, escolhe um modelo uma vez, para a primeira mensagem. Nunca aprova nada por você.",
         "usage": "Para usar, escolha-o em Verificação prévia ao editar uma automação ou rotina.",
-        "usageStartTask": "Para usar, escolha “Deixar um plugin escolher” no seletor de modelo de uma nova tarefa.",
+        "usageStartTask": "Para usar, escolha um modelo oferecido por ele no seletor de modelos de uma nova tarefa.",
         "points": {
           "will-schedule-run": "Antes de executar uma automação",
           "will-routine-run": "Antes de executar uma rotina de um colega",
@@ -7682,7 +7682,7 @@
         "subscribeRoutineRun": "Pode verificar rotinas de colegas escolhidas antes de executarem",
         "subscribeRoutineRunDetail": "As rotinas em que você o escolher em Verificação prévia consultam-no primeiro. Ele vê as instruções e os eventos que as acionaram e pode pular ou parar essa execução, mas não aprovar nada por você.",
         "subscribeStartTask": "Pode escolher o modelo de novas tarefas",
-        "subscribeStartTaskDetail": "Quando “Deixar um plugin escolher” está selecionado numa nova tarefa, ele lê a primeira mensagem e escolhe um dos seus modelos conectados. Decide uma vez; o modelo não muda durante a tarefa.",
+        "subscribeStartTaskDetail": "Quando uma nova tarefa usa um modelo oferecido por ele, ele lê a primeira mensagem e escolhe um dos seus modelos conectados. Escolhe uma vez; o modelo não muda durante a tarefa.",
         "card": "Renderiza cartões de mensagens",
         "cardExternalLink": "Os cartões podem declarar links externos que abrem seu navegador após confirmação",
         "cardExternalLinkDetail": "Clicar em um link de cartão exibe uma caixa de diálogo de confirmação; a URL só abre no navegador do sistema após sua aprovação. Apenas endereços http/https são permitidos.",
@@ -12131,11 +12131,6 @@
       "addRemoteProject": "Adicionar projeto remoto"
     },
     "modelSelector": {
-      "pluginRouter": {
-        "group": "Plugins",
-        "title": "Deixar um plugin escolher",
-        "detail": "{{name}} escolhe o modelo ao iniciar"
-      },
       "displayPricing": {
         "components": {
           "text": "Texto",

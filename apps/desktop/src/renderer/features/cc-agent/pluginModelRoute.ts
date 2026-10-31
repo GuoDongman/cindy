@@ -1,21 +1,56 @@
 /**
- * 新任务「让插件选」的两步，普通发送与新建目标共用：建任务前问一次插件，首条消息落库后写一行说明。
+ * 新任务选中插件模型时的两步，普通发送与新建目标共用：建任务前问一次插件，首条消息落库后写一行说明。
  * 插件只能从已连接的模型里选(主进程校验)；没回应或调用失败都返回 null / kept，沿用用户原来的模型。
  */
 import type { PluginModelRouteNote } from '@/lib/ccAgent.types';
 import { createLogger } from '@/lib/logger';
-import type { GhostModelRoute, GhostStartTaskRouteResult } from '../../../shared/ghost';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import type { GhostModelRoute, GhostPickerModel, GhostStartTaskRouteResult } from '../../../shared/ghost';
 
 const log = createLogger('plugin-model-route');
 
+const NO_PLUGIN_MODELS: GhostPickerModel[] = [];
+
+/** 选择器里的插件模型。取不到就是没有，选择器和没装插件时一样。 */
+export function usePluginModels(enabled: boolean): GhostPickerModel[] {
+  const { i18n } = useTranslation();
+  const [models, setModels] = useState<GhostPickerModel[]>(NO_PLUGIN_MODELS);
+  useEffect(() => {
+    if (!enabled) {
+      setModels(NO_PLUGIN_MODELS);
+      return;
+    }
+    let alive = true;
+    const refresh = () => {
+      window.electronAPI.ghosts.listPickerModels()
+        .then((list) => { if (alive) setModels(list); })
+        .catch((err: unknown) => {
+          log.warn('plugin models unavailable', err);
+          if (alive) setModels(NO_PLUGIN_MODELS);
+        });
+    };
+    refresh();
+    // 插件装上、更新、启停或发布新列表时都会广播。
+    const off = window.electronAPI.ghosts.onChanged(refresh);
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [enabled, i18n.language]);
+  return models;
+}
+
 export async function askPluginModelRoute(
-  pluginId: string,
+  model: GhostPickerModel,
   text: string,
   attachmentCount: number,
   base: { agentKind: GhostModelRoute['agentKind']; model: string; providerId?: string | null; effort?: string | null },
 ): Promise<GhostStartTaskRouteResult | null> {
   try {
-    return await window.electronAPI.ghosts.routeNewTask(pluginId, {
+    return await window.electronAPI.ghosts.routeNewTask(model.pluginId, {
+      modelId: model.id,
       text,
       attachmentCount,
       route: {

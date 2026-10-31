@@ -199,7 +199,8 @@ export interface NewMakerDraft {
    * 新任务「让插件选」(2026-10-31)：选中后新任务第一条消息发出前问一次这个插件用哪个模型；
    * 记住为新任务默认，用户手动选任何模型即清除。null = 不用。
    */
-  modelRouter: { pluginId: string } | null;
+  /** 选中的插件模型；底下的模型设置保留，插件没给结果时用它们。 */
+  pluginModel: { pluginId: string; modelId: string } | null;
 }
 
 /**
@@ -275,7 +276,7 @@ function makeDefault(): NewMakerDraft {
     defaultTupleCustomized: false,
     newChatDefaultPermissionMode: null,
     defaultTupleSelectionCustomized: false,
-    modelRouter: null,
+    pluginModel: null,
   };
 }
 
@@ -514,14 +515,17 @@ function sanitize(raw: unknown): NewMakerDraft {
     defaultTupleCustomized,
     newChatDefaultPermissionMode,
     defaultTupleSelectionCustomized,
-    modelRouter: sanitizeModelRouter(r.modelRouter),
+    pluginModel: sanitizePluginModel(r.pluginModel),
   };
 }
 
-function sanitizeModelRouter(value: unknown): NewMakerDraft['modelRouter'] {
+function sanitizePluginModel(value: unknown): NewMakerDraft['pluginModel'] {
   if (!value || typeof value !== 'object') return null;
-  const pluginId = (value as { pluginId?: unknown }).pluginId;
-  return typeof pluginId === 'string' && pluginId.trim() && pluginId.length <= 512 ? { pluginId } : null;
+  const { pluginId, modelId } = value as { pluginId?: unknown; modelId?: unknown };
+  return typeof pluginId === 'string' && pluginId.trim() && pluginId.length <= 512
+    && typeof modelId === 'string' && modelId.trim() && modelId.length <= 64
+    ? { pluginId, modelId }
+    : null;
 }
 
 function loadFromStorage(): NewMakerDraft {

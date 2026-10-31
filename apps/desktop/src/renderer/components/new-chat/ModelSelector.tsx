@@ -75,7 +75,7 @@ import {
   type UnifiedModelPanelProps,
   type UnifiedSelectedRow,
 } from './UnifiedModelPanel';
-import { ModelRouterSection, type ModelRouterPickerProps } from './ModelRouterSection';
+import { PluginModelIcon, PluginModelsSection, type PluginModelsPickerProps } from './PluginModelsSection';
 import { stopWheelPropagation } from '@/lib/stopWheelPropagation';
 import type { ProviderGroupUsageOf, ProviderUsageScope } from './useProviderWeeklyQuota';
 import { ThinkingToggle } from './ThinkingToggle';
@@ -717,8 +717,8 @@ export interface RemoteAgentSelectorOptions {
 }
 
 interface ModelSelectorProps {
-  /** 语义同 ModelSelectorContentProps.modelRouter。 */
-  modelRouter?: ModelRouterPickerProps;
+  /** 语义同 ModelSelectorContentProps.pluginModels。 */
+  pluginModels?: PluginModelsPickerProps;
   /** Authoritative surface-specific allowlist (e.g. one-shot or vision routes). */
   providersOverride?: ProviderView[];
   providersOverrideState?: { status: 'loading' | 'error' | 'ready'; refresh: () => void };
@@ -930,7 +930,7 @@ interface ModelSelectorProps {
 
 interface ModelSelectorContentProps {
   /** 新任务的「让插件选」；只有草稿传(已有任务、伙伴对话不传)。 */
-  modelRouter?: ModelRouterPickerProps;
+  pluginModels?: PluginModelsPickerProps;
   providersOverride?: ProviderView[];
   providersOverrideState?: ModelSelectorProps['providersOverrideState'];
   modelId: string;
@@ -1206,7 +1206,7 @@ export function ModelSelectorContent(props: ModelSelectorContentProps) {
 const NO_MODEL_SELECTION = { providerId: null, modelId: '' } as const;
 
 function ModelSelectorContentView({
-  modelRouter,
+  pluginModels,
   providersOverride,
   providersOverrideState,
   modelId,
@@ -3566,7 +3566,7 @@ function ModelSelectorContentView({
           </div>
           {localCatalogNotice && <div className="shrink-0 p-2">{localCatalogNotice}</div>}
           <UnifiedModelPanel
-            {...(modelRouter ? { pinnedTop: <ModelRouterSection router={modelRouter} onPicked={() => onDismiss?.()} /> } : {})}
+            {...(pluginModels ? { pinnedTop: <PluginModelsSection picker={pluginModels} query={query} onPicked={() => onDismiss?.()} /> } : {})}
             {...(!remoteAgent && deviceId && (remoteModelListStatus === 'loading' || remoteModelListStatus === 'error')
               ? {
                   catalogNotice: (
@@ -3598,9 +3598,9 @@ function ModelSelectorContentView({
             query={query}
             // field 形态的面板宽度绑 trigger,定宽 sizer 无用武之地(见该 prop 说明)。
             panelWidthFluid={fluidWidth}
-            // 「让插件选」生效时选中的是插件那一行，模型行不再同时显示选中底色。
-            selected={modelRouter?.activePluginId ? NO_MODEL_SELECTION : panelSelection}
-            selectedFavoriteUid={browsingSelectedCatalog && !modelRouter?.activePluginId ? selectedFavoriteUid : null}
+            // 选中插件模型时选中的是插件那一行，普通模型行不再同时显示选中底色。
+            selected={pluginModels?.active ? NO_MODEL_SELECTION : panelSelection}
+            selectedFavoriteUid={browsingSelectedCatalog && !pluginModels?.active ? selectedFavoriteUid : null}
             liveAgentKind={
               unifiedSelectionPolicy === 'official' || !browsingLiveCatalog ? null : currentAgentKind
             }
@@ -4029,7 +4029,7 @@ function ModelSelectorContentView({
 }
 
 export function ModelSelector({
-  modelRouter,
+  pluginModels,
   providersOverride,
   providersOverrideState,
   modelId,
@@ -4489,19 +4489,15 @@ export function ModelSelector({
     : null;
   const withAgentDeviceLabel = (label: string): string =>
     agentDeviceLabel ? `${label} · ${agentDeviceLabel}` : label;
-  const routerCandidate = modelRouter?.activePluginId
-    ? modelRouter.candidates.find((item) => item.pluginId === modelRouter.activePluginId) ?? null
-    : null;
-  const routerActive = !!routerCandidate;
-  const routerLabel = routerCandidate
-    ? `${t('newChat.modelSelector.pluginRouter.title')} · ${t('newChat.modelSelector.pluginRouter.detail', { name: routerCandidate.name })}`
-    : null;
+  const activePluginModel = pluginModels?.active ?? null;
   const triggerTitleBase = withAgentDeviceLabel(pendingSelectionTitle
     ? `${pendingSelectionTitle}${showSourceDisconnected ? ` · ${sourceIssueLabel}` : ''}`
     : showSourceDisconnected ? baseAriaLabel : displayIdentityLabel);
-  const triggerTitle = routerLabel ?? triggerTitleBase;
+  const triggerTitle = activePluginModel
+    ? `${activePluginModel.name} · ${activePluginModel.pluginName}`
+    : triggerTitleBase;
   // 多实例同屏(IM 目录偏好)时前置「字段名 · 行别名」,读屏才能区分行与行。
-  const accessibleLabel = routerLabel ?? (pendingSelectionTitle ? triggerTitle : withAgentDeviceLabel(baseAriaLabel));
+  const accessibleLabel = activePluginModel ? triggerTitle : (pendingSelectionTitle ? triggerTitle : withAgentDeviceLabel(baseAriaLabel));
   const ariaLabel = ariaContext ? `${ariaContext}:${accessibleLabel}` : accessibleLabel;
   const isBudget = isCodexGatewayWireModel(modelId);
   const isFieldTrigger = triggerVariant === 'field';
@@ -4629,11 +4625,11 @@ export function ModelSelector({
       {agentIdentity?.state === 'pending' && (
         <Clock3 size={dense ? 11 : 12} data-model-selection-pending aria-hidden className="shrink-0 text-[var(--model-trigger-meta)]" />
       )}
-      {routerActive ? (
+      {activePluginModel ? (
         <>
-          <Plug size={13} aria-hidden className="mr-0.5 shrink-0 text-[var(--text-primary)]" />
+          <PluginModelIcon model={activePluginModel} size={14} />
           <span className={cn('min-w-0 truncate font-medium text-[var(--text-primary)]', dense ? 'text-12' : 'text-13', isUltraCompactToolbar && 'hidden')}>
-            {t('newChat.modelSelector.pluginRouter.title')}
+            {activePluginModel.name}
           </span>
         </>
       ) : noSource ? (
@@ -4927,7 +4923,7 @@ export function ModelSelector({
       selectedFavoriteUid={selectedFavoriteUid}
       onSessionFavoriteAnchorChange={onSessionFavoriteAnchorChange}
       onUnifiedSelect={onUnifiedSelect}
-      {...(modelRouter ? { modelRouter } : {})}
+      {...(pluginModels ? { pluginModels } : {})}
       reselectEmitsChange={reselectEmitsChange}
       selectedRowClickOpensConfiguration={selectedRowClickOpensConfiguration}
       pointerRevealRequiresIntent={morphEnabled}

@@ -7533,7 +7533,7 @@
         "titleWithStartTask": "When this plugin steps in",
         "descriptionWithStartTask": "It only steps in for tasks where you chose it: before a run it can only skip or stop that run, and for a new task it picks a model once, for the first message. It can never approve anything for you.",
         "usage": "To use it, choose it under Pre-run check when editing an automation or routine.",
-        "usageStartTask": "To use it, choose “Let a plugin choose” in a new task’s model picker.",
+        "usageStartTask": "To use it, choose a model it provides in a new task’s model picker.",
         "points": {
           "will-schedule-run": "Before an automation runs",
           "will-routine-run": "Before a teammate routine runs",
@@ -7615,7 +7615,7 @@
         "subscribeRoutineRun": "Can check chosen teammate routines before they run",
         "subscribeRoutineRunDetail": "Routines where you choose it under Pre-run check ask it first. It sees the routine's instructions and the events that triggered it, and can skip or stop that run, but can't approve anything for you.",
         "subscribeStartTask": "Can choose the model for new tasks",
-        "subscribeStartTaskDetail": "When “Let a plugin choose” is selected for a new task, it reads the first message and picks one of your connected models. It decides once; the model doesn’t change during the task.",
+        "subscribeStartTaskDetail": "When a new task uses a model it provides, it reads the first message and picks one of your connected models. It decides once; the model doesn’t change during the task.",
         "card": "Renders message cards",
         "cardExternalLink": "Cards may declare external links that open your browser after confirmation",
         "cardExternalLinkDetail": "Clicking a card link shows a confirmation dialog; the URL opens in your system browser only after you approve. Only http/https addresses are allowed.",
@@ -12036,11 +12036,6 @@
       "addRemoteProject": "Add remote project"
     },
     "modelSelector": {
-      "pluginRouter": {
-        "group": "Plugins",
-        "title": "Let a plugin choose",
-        "detail": "{{name}} picks a model when the task starts"
-      },
       "displayPricing": {
         "components": {
           "text": "Text",

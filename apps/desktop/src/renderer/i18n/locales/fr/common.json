@@ -7600,7 +7600,7 @@
         "titleWithStartTask": "Quand ce plugin intervient",
         "descriptionWithStartTask": "Il n’intervient que dans les tâches où tu l’as choisi : avant une exécution, il peut seulement l’ignorer ou l’arrêter ; pour une nouvelle tâche, il choisit un modèle une seule fois, pour le premier message. Il n’approuve jamais rien à ta place.",
         "usage": "Pour l’utiliser, choisis-le dans Vérification préalable en modifiant une automatisation ou une routine.",
-        "usageStartTask": "Pour l’utiliser, choisis « Laisser un plugin choisir » dans le sélecteur de modèle d’une nouvelle tâche.",
+        "usageStartTask": "Pour l’utiliser, choisissez un modèle qu’il propose dans le sélecteur de modèles d’une nouvelle tâche.",
         "points": {
           "will-schedule-run": "Avant l’exécution d’une automatisation",
           "will-routine-run": "Avant l’exécution d’une routine d’un coéquipier",
@@ -7682,7 +7682,7 @@
         "subscribeRoutineRun": "Peut vérifier les routines choisies avant leur exécution",
         "subscribeRoutineRunDetail": "Les routines pour lesquelles tu le choisis dans Vérification préalable le consultent d’abord. Il voit leurs instructions et les événements déclencheurs et peut ignorer ou arrêter cette exécution, sans rien approuver à ta place.",
         "subscribeStartTask": "Peut choisir le modèle des nouvelles tâches",
-        "subscribeStartTaskDetail": "Quand « Laisser un plugin choisir » est sélectionné pour une nouvelle tâche, il lit le premier message et choisit l’un de tes modèles connectés. Il décide une seule fois ; le modèle ne change pas pendant la tâche.",
+        "subscribeStartTaskDetail": "Lorsqu’une nouvelle tâche utilise un modèle qu’il propose, il lit le premier message et choisit l’un de vos modèles connectés. Il choisit une seule fois ; le modèle ne change pas pendant la tâche.",
         "card": "Affiche des cartes de message",
         "cardExternalLink": "Les cartes peuvent déclarer des liens externes qui ouvrent votre navigateur après confirmation",
         "cardExternalLinkDetail": "Cliquer sur un lien de carte affiche une boîte de dialogue de confirmation ; l'URL ne s'ouvre dans le navigateur du système qu'après votre approbation. Seules les adresses http/https sont autorisées.",
@@ -12131,11 +12131,6 @@
       "addRemoteProject": "Ajouter un projet distant"
     },
     "modelSelector": {
-      "pluginRouter": {
-        "group": "Plugins",
-        "title": "Laisser un plugin choisir",
-        "detail": "{{name}} choisit le modèle au démarrage"
-      },
       "displayPricing": {
         "components": {
           "text": "Texte",

@@ -291,7 +291,7 @@ export const UI_MOCK_TASKS: readonly UiMockTask[] = [
   },
   {
     id: 'ui-mock-plugin-route-routed',
-    title: '让插件选：选了模型',
+    title: '插件模型：选了模型',
     project: null,
     agentKind: 'codex',
     model: 'gpt-6-astra',
@@ -307,7 +307,7 @@ export const UI_MOCK_TASKS: readonly UiMockTask[] = [
   },
   {
     id: 'ui-mock-plugin-route-failed',
-    title: '让插件选：插件没回应',
+    title: '插件模型：插件没回应',
     project: null,
     agentKind: 'codex',
     model: 'gpt-6.1-sol',

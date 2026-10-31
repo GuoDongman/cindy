@@ -7490,7 +7490,7 @@
         "titleWithStartTask": "插件介入的时机",
         "descriptionWithStartTask": "只在你选了它的任务里介入：运行前只能跳过或停止本次运行，开新任务时只为第一条消息选一次模型。都不能替你批准。",
         "usage": "使用方法：编辑自动化或例行任务时，在「前置检查」里选它。",
-        "usageStartTask": "使用方法：在新任务的模型选择器里选「让插件选」。",
+        "usageStartTask": "使用方法：在新任务的模型选择器里选它提供的模型。",
         "points": {
           "will-schedule-run": "自动化运行前",
           "will-routine-run": "伙伴的例行任务运行前",
@@ -7572,7 +7572,7 @@
         "subscribeRoutineRun": "可在你选定的伙伴例行任务运行前做检查",
         "subscribeRoutineRunDetail": "在「前置检查」里选了它的例行任务，每次触发后会先问它。它看得到例行任务的指令和触发它的事件内容，可以让这次跳过或停止，但不能替你批准。",
         "subscribeStartTask": "可为新任务选模型",
-        "subscribeStartTaskDetail": "新任务的模型选择器里选了「让插件选」时，它会看第一条消息，从你已连接的模型里选一个。只选一次，任务中途不会换模型。",
+        "subscribeStartTaskDetail": "新任务选了它提供的模型时，它会看第一条消息，从你已连接的模型里选一个。只选一次，任务中途不会换模型。",
         "card": "渲染消息卡片",
         "cardExternalLink": "卡片内可声明外链，经你确认后打开浏览器",
         "cardExternalLinkDetail": "卡片中的链接点击后会弹出确认框，你同意后才会在系统浏览器中打开；仅限 http/https 地址。",
@@ -11989,11 +11989,6 @@
       "addRemoteProject": "添加远程项目"
     },
     "modelSelector": {
-      "pluginRouter": {
-        "group": "插件",
-        "title": "让插件选",
-        "detail": "{{name}} 在开新任务时选模型"
-      },
       "displayPricing": {
         "components": {
           "text": "文字",

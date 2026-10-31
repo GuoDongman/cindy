@@ -208,7 +208,7 @@ async function submit(options: {
   const toastError = vi.fn();
   const environment = {
     deviceDisplayName, dbToMakerAgentKind, askPluginModelRoute, writePluginModelRouteNote,
-    activeModelRouterPluginId: options.pluginRoute ? 'router' : null,
+    activePluginModel: options.pluginRoute ? { pluginId: 'router', pluginName: 'Router', id: 'auto', name: 'Auto' } : null,
     ...draftEffort, getModel, window,
     localProviders: providers, localProvidersLoading: false, providers,
     capabilityAgentKind: agentKind, persistedAgentKind: agentKind,

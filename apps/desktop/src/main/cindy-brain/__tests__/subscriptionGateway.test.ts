@@ -1556,7 +1556,7 @@ describe('control points', () => {
   // known fields before Main validates it, and a route sent to a run point is just "no objection".
   it('returns a sanitized route only at the new-task point', async () => {
     const start = 'will-start-task' as const;
-    const startData = { text: 'fix the login bug', attachmentCount: 0, route: { agentKind: 'codex' as const, model: 'm1', providerId: 'p' } };
+    const startData = { modelId: 'auto', text: 'fix the login bug', attachmentCount: 0, route: { agentKind: 'codex' as const, model: 'm1', providerId: 'p' } };
     const { gw, sent, running } = makeGateway({
       listGhosts: () => [{ ...ghost('r1', { hooks: [start, point] }), approvedControlPoints: [start, point] }],
     });

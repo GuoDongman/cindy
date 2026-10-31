@@ -7533,7 +7533,7 @@
         "titleWithStartTask": "Wann dieses Plugin eingreift",
         "descriptionWithStartTask": "Es greift nur bei Aufgaben ein, für die du es gewählt hast: Vor einem Lauf kann es ihn nur überspringen oder stoppen, bei einer neuen Aufgabe wählt es einmal ein Modell für die erste Nachricht. Es genehmigt nie etwas für dich.",
         "usage": "Wähle es beim Bearbeiten einer Automatisierung oder Routine unter Vorabprüfung aus.",
-        "usageStartTask": "Wähle dazu im Modellwähler einer neuen Aufgabe „Plugin wählen lassen“.",
+        "usageStartTask": "So nutzt du es: Wähle in der Modellauswahl einer neuen Aufgabe ein Modell, das dieses Plugin bereitstellt.",
         "points": {
           "will-schedule-run": "Vor der Ausführung einer Automatisierung",
           "will-routine-run": "Vor der Ausführung einer Routine eines Teammitglieds",
@@ -7615,7 +7615,7 @@
         "subscribeRoutineRun": "Kann ausgewählte Teammate-Routinen vor dem Start prüfen",
         "subscribeRoutineRunDetail": "Routinen, bei denen du es unter Vorabprüfung wählst, fragen es zuerst. Es sieht die Anweisungen und auslösenden Ereignisse und kann den Lauf überspringen oder stoppen, aber nichts für dich genehmigen.",
         "subscribeStartTask": "Kann das Modell für neue Aufgaben wählen",
-        "subscribeStartTaskDetail": "Ist bei einer neuen Aufgabe „Plugin wählen lassen“ ausgewählt, liest es die erste Nachricht und wählt eines deiner verbundenen Modelle. Es entscheidet einmal; während der Aufgabe wechselt das Modell nicht.",
+        "subscribeStartTaskDetail": "Wenn eine neue Aufgabe ein Modell dieses Plugins nutzt, liest es die erste Nachricht und wählt eines deiner verbundenen Modelle. Es wählt einmal; das Modell ändert sich während der Aufgabe nicht.",
         "card": "Stellt Nachrichtenkarten dar",
         "cardExternalLink": "Karten können externe Links enthalten, die nach Bestätigung deinen Browser öffnen",
         "cardExternalLinkDetail": "Beim Anklicken eines Kartenlinks erscheint ein Bestätigungsdialog. Die URL öffnet sich erst nach deiner Zustimmung im Systembrowser. Nur http/https-Adressen sind erlaubt.",
@@ -12036,11 +12036,6 @@
       "addRemoteProject": "Remote-Projekt hinzufügen"
     },
     "modelSelector": {
-      "pluginRouter": {
-        "group": "Plugins",
-        "title": "Plugin wählen lassen",
-        "detail": "{{name}} wählt beim Start das Modell"
-      },
       "displayPricing": {
         "components": {
           "text": "Text",
