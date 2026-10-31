@@ -4,7 +4,7 @@
  * 列出宿主为该插件保存的对话文件副本(7 天后自动删除),逐个删除前确认。
  * 只在有副本或有工具声明接收时渲染;不显示本机路径,可在访达 / 资源管理器中打开副本目录。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, FolderOpen, RefreshCw } from 'lucide-react';
 
@@ -37,8 +37,15 @@ export function GhostHandoffFilesSection({ ghostId, declared }: { ghostId: strin
   // Copies are account data: reload on an account switch and ignore late answers.
   const ownerGeneration = useOptionalDataOwnerGeneration();
   const request = useRef(0);
+  // A delete started for a previous plugin refreshes through its old closure;
+  // skip it before it takes a request number, or it could overwrite this plugin.
+  const shownGhost = useRef(ghostId);
+  useLayoutEffect(() => {
+    shownGhost.current = ghostId;
+  }, [ghostId]);
 
   const refresh = useCallback(async () => {
+    if (shownGhost.current !== ghostId) return;
     const current = ++request.current;
     try {
       const [next, nextFolder] = await Promise.all([

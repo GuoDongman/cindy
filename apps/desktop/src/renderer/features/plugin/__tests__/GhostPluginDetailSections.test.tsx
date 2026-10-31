@@ -1362,3 +1362,32 @@ it('opens the instance handoff folder only once a copy exists', async () => {
   expect(openPath).toHaveBeenCalledExactlyOnceWith('/data/ghost-handoff/art');
   expect(handoffFolder).toHaveBeenCalledWith('art');
 });
+
+// Codex 4431547660: a delete that finishes after switching plugins must not show
+// the previous plugin's files or folder. Tier: renderer unit, same mounted section.
+it('ignores the refresh of a delete that finishes after switching plugins', async () => {
+  const { ConfirmDialogProvider } = await import('@/components/ui/confirm-dialog-provider');
+  const { GhostHandoffFilesSection } = await import('../GhostHandoffFilesSection');
+  const copy = (id: string) => ({ ref: 'handoff:00000000-0000-4000-8000-000000000004', name: `${id}.csv`, mimeType: 'text/csv', size: 1, sha256: 'a'.repeat(64), createdAt: 1, expiresAt: 2 });
+  let finishDelete!: () => void;
+  const handoffDelete = vi.fn(() => new Promise<{ existed: boolean }>((resolve) => { finishDelete = () => resolve({ existed: true }); }));
+  const handoffList = vi.fn(async (id: string) => [copy(id)]);
+  const handoffFolder = vi.fn(async (id: string) => `/data/ghost-handoff/${id}`);
+  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete, handoffFolder } });
+  const view = (id: string) => <ConfirmDialogProvider><GhostHandoffFilesSection ghostId={id} declared /></ConfirmDialogProvider>;
+  const { rerender } = render(view('plugin-a'));
+
+  const row = (await screen.findByText('plugin-a.csv')).closest('li') as HTMLElement;
+  fireEvent.click(within(row).getByRole('button'));
+  fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'settings.ghosts.handoff.delete' }));
+  await waitFor(() => expect(handoffDelete).toHaveBeenCalledOnce());
+  rerender(view('plugin-b'));
+  await screen.findByText('plugin-b.csv');
+  finishDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(screen.queryByText('plugin-a.csv')).toBeNull();
+  expect(screen.getByText('plugin-b.csv')).toBeTruthy();
+  expect(handoffList.mock.calls.map(([id]) => id)).toEqual(['plugin-a', 'plugin-b']);
+});
