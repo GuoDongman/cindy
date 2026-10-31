@@ -69,6 +69,17 @@ export default {
       await loadingInput.fill('苹果');
       await page.evaluate(() => window.dispatchEvent(new Event('fixture-preview-ready')));
       await card.getByText('1/2', { exact: true }).waitFor();
+      // The first result is below the fold: loading must reveal it without
+      // another keystroke that would otherwise skip to the second result.
+      await page.waitForFunction(() => {
+        const root = document.querySelector('[data-text-lightbox-search-root]');
+        const match = [...(CSS.highlights.get('cindy-find-in-page-active') || [])][0];
+        if (!root || !match) return false;
+        const viewport = root.getBoundingClientRect();
+        const rect = match.getBoundingClientRect();
+        return root.scrollTop > 0 && rect.top >= viewport.top && rect.bottom <= viewport.bottom;
+      }, undefined, { timeout: 3000 });
+      await ui.capture('loaded-first-match');
     }
     await card.getByRole('heading', { name: 'Markdown 查找验证', exact: true }).waitFor();
     const opener = card.getByRole('button', { name: await ui.t('chat.textLightbox.copyAll'), exact: true });

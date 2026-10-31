@@ -591,7 +591,10 @@ export function FindInPageBar() {
 
     const refreshSearch = () => {
       if (isComposingRef.current) return;
-      applySearch(text, activeRef.current);
+      // A query entered before the preview body loads must reveal its first
+      // result when it arrives. Later refreshes preserve the reader's scroll.
+      const revealLoadedMatch = Boolean(getTextPreviewSearchHost()) && rangesRef.current.length === 0;
+      applySearch(text, activeRef.current, revealLoadedMatch);
     };
     const scheduleRefresh = () => {
       if (isComposingRef.current) return;

@@ -75,7 +75,9 @@ mountPage({
         success: true,
         data: ctx.case === 'nested-mermaid'
           ? markdown.replace('正文中的苹果。', '正文中的苹果。\n\n```mermaid\nflowchart LR\n  A[开始] --> B[结束]\n```')
-          : markdown,
+          : ctx.case === 'loading-editor'
+            ? markdown.replace('正文中的苹果。', '').replace('| 内容 |', '正文中的苹果。\n\n| 内容 |')
+            : markdown,
         size: markdown.length,
       };
     },
