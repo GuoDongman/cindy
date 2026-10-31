@@ -149,7 +149,15 @@ Library 请求同时绑定迁移代次和安装批准，根解析、排队及开
   `browser-extension-relay` 事件转交给声明插件，插件经 `browser-extension-request` 投递作业、
   推送配对身份。不设站点名单（2026-10-30 决定：安全交给任务的权限档位与自动审核，与专用浏览器
   一致）；旧插件仍推送的 `setPolicy` 照常应答但不生效。本机与私网地址和公网网站一样可访问
-  （2026-10-28 决定）。新增 id 或新增 `pageControl` 视为权限变多，删减视为收权。
+  （2026-10-28 决定）。「我的浏览器」的能力对齐专用浏览器（截图、上传、evaluate、控制台、
+  网络事件、弹窗、坐标与拖拽、resize），底线只有不打扰用户（Agent 页面开在不抢焦点的 Cindy
+  窗口、截图不切走用户正在看的标签页、resize 只动 Cindy 窗口）和防冒充；不限制 Agent 能力，
+  密码／支付／验证码字段可读可填，风险交给任务权限档位与自动审核（2026-10-30 决定，
+  共同规则见 [Browser Use](browser-use.md)）。Chrome 调试接口（PDF、读 Cookie、抓包等配方）
+  按需申请可选权限：首次需要时在用户窗口打开说明页、十分钟内最多一次、用后断开，开关放
+  扩展自己的选项页，不进 Cindy 设置；新增权限不得改变 Chrome 的安装提示（`<all_urls>` 可加，
+  `tabGroups` 只能做可选权限）。Agent 操作的页面显示红光边框与「Cindy 正在自动操作此页面」
+  标签，保持到最后一次动作后约 20 秒。新增 id 或新增 `pageControl` 视为权限变多，删减视为收权。
 - 无配置的布尔能力只接受字面量 `true`：`notify`、`badge`、`confirm`、`fs`、`library`、
   `sessionContext`、`pick`、`workspace`。不用就省略，写 `false` 是无效清单。
 - `card: {}` 与 `agent: {}` 分别表示基础卡片能力和由真实用户点击触发 Agent 回合；

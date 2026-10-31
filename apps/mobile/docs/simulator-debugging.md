@@ -489,6 +489,23 @@ App 为 active 的等待时间，`wallElapsedMs` 单独保留包含后台与离�
 实现与回归见 `src/debug/useContentRecoveryDiagnostics.ts`、`scrollDebugSampler.ts`
 及相邻测试，键盘回归见 `src/__tests__/composerKeyboard.test.tsx`、`sheetKeyboardSubscription.test.tsx`。
 
+### 真机排查与并存测试版
+
+真机上的问题（缓存、推送、后台恢复等）先取证据再动手：读设备日志、核对正在运行的版本、
+构建并安装测试版后用日志验证。不要把「可以用真机测」理解成在电脑上镜像手机画面逐步点按：
+镜像只能看画面，看不到版本和日志，2026-10-17 曾因此耗掉整轮时间。
+
+需要在真机上与正式 Cindy 并存安装测试版时，用另一个 bundle ID，不覆盖用户的正式 App
+（心动团队用 `com.xd.cindytest`，该 App ID 已有自动签名描述文件；临时新建的 ID 签名不可靠）：
+
+- 用临时 `self-host-regions.json` 覆盖 `iosBundleId`，通过 `CINDY_SELF_HOST_REGIONS_FILE`
+  指给构建；`EXPO_PUBLIC_APP_VARIANT=beta` 与 `EXPO_PUBLIC_BETA_DEV` 改显示名，一眼分得清。
+- 测试 App ID 没有 app group，`CindyNotificationService` 扩展也没有通信通知能力：只在生成的
+  `ios/` 里删掉对应 entitlement（分享扩展、通知头像在测试版不可用），不改仓库里的配置。
+- Xcode 27 需要 `SWIFT_ENABLE_EXPLICIT_MODULES=NO CLANG_ENABLE_EXPLICIT_MODULES=NO`
+  （与 `scripts/build-ios.mjs` 相同），否则 WechatOpenSDK 模块解析失败。
+- 安装：`xcrun devicectl device install app --device <udid> <.app>`。
+
 ### 从开发版 iPhone 读取历史 Debug 文件
 
 手机与 Mac 配对、开启 Developer Mode 后，可通过 Xcode 设备管理窗口
