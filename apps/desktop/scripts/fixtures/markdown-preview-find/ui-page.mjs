@@ -19,6 +19,7 @@ export default {
     'loading-editor': { about: 'The foreground document owns find and Escape before its file read completes' },
     'focus-restore': { about: 'Closing find restores the document toolbar opener for keyboard navigation' },
     'ime-escape': { about: 'An IME-cancelling Escape and its repeats keep search open until a new press' },
+    'outside-focus': { about: 'Escape closes find first even after Tab reaches the backdrop or covered page' },
   },
   async check(page, ui) {
     const findKey = ui.platform === 'darwin' ? 'Meta+f' : 'Control+f';
@@ -107,6 +108,26 @@ export default {
     await input.focus();
     await page.keyboard.press('Shift+Enter');
     await card.getByText('1/2', { exact: true }).waitFor();
+    if (ui.case === 'outside-focus') {
+      for (const target of [page.locator('[data-text-lightbox-overlay] > button'), page.getByTestId('open-preview')]) {
+        await input.focus();
+        for (let tab = 0; tab < 20 && !await target.evaluate(el => document.activeElement === el); tab += 1) {
+          await page.keyboard.press('Tab');
+        }
+        assert.equal(await target.evaluate(el => document.activeElement === el), true);
+        await page.keyboard.press('Escape');
+        await input.waitFor({ state: 'detached' });
+        assert.equal(await card.count(), 1);
+        await page.locator('[data-text-lightbox-overlay]').evaluate(async el => {
+          await Promise.all(el.getAnimations().map(animation => animation.finished.catch(() => {})));
+        });
+        assert.equal(await page.locator('[data-text-lightbox-overlay]').evaluate(el => getComputedStyle(el).opacity), '1');
+        await page.keyboard.press(findKey);
+        await input.fill('苹果');
+        await card.getByText('1/2', { exact: true }).waitFor();
+      }
+      await ui.capture('outside-focus-keeps-preview');
+    }
     await body.click({ position: { x: 20, y: 120 } });
     await page.keyboard.down('Escape');
     await input.waitFor({ state: 'detached' });
@@ -120,7 +141,19 @@ export default {
     assert.equal(await page.evaluate(() => CSS.highlights.has('cindy-find-in-page-match')), false);
     if (ui.case === 'focus-restore') {
       assert.equal(await opener.evaluate(el => document.activeElement === el), true);
+      // A toolbar tooltip owns its own Escape before the document. Reopen it
+      // deterministically because the held-key check may already have dismissed it.
+      await body.click({ position: { x: 20, y: 120 } });
+      await opener.focus();
+      const tooltip = page.locator('[role="tooltip"]');
+      await tooltip.waitFor();
+      await page.keyboard.press('Escape');
+      await tooltip.waitFor({ state: 'detached' });
+      assert.equal(await card.isVisible(), true);
     }
+    // Settle hover/focus tooltips before checking the document's own Escape.
+    await body.click({ position: { x: 20, y: 120 } });
+    await page.locator('[role="tooltip"]').waitFor({ state: 'detached' });
     await page.keyboard.press('Escape');
     await card.waitFor({ state: 'detached' });
     await page.keyboard.press(findKey);

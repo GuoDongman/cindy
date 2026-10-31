@@ -6,7 +6,6 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { isLightboxCovered } from '@/lib/lightboxLayer';
-import { isForeignKeyboardControl } from '@/lib/editableKeyboardTarget';
 import { useAppShortcut } from '@/hooks/useAppShortcut';
 import { WINDOW_NO_DRAG_STYLE } from '@/components/layout/windowDrag';
 import { getTextPreviewSearchHost, isFindInPageClaimed } from './findInPageOwnership';
@@ -558,7 +557,10 @@ export function FindInPageBar() {
       if (event.key !== 'Escape' || isLightboxCovered(previewHost)) return;
       // Markdown context menus portal outside the card and own their Escape.
       const target = event.target;
-      if (target instanceof Element && !previewHost.contains(target) && isForeignKeyboardControl(target)) return;
+      const popup = target instanceof Element
+        ? target.closest('[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]')
+        : null;
+      if (popup && !previewHost.contains(popup)) return;
       if (event.isComposing || event.keyCode === 229) {
         // Leave the IME's default cancellation intact, without dismissing the
         // search or the preview through a later Escape listener.
