@@ -560,7 +560,15 @@ export function FindInPageBar() {
       const popup = target instanceof Element
         ? target.closest('[role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]')
         : null;
-      if (popup && !previewHost.contains(popup)) return;
+      // Tooltips keep focus on their trigger, including when only hovered.
+      // Follow the preview's active descriptions instead of treating a covered
+      // page's unrelated tooltip as the foreground owner.
+      const hasPreviewTooltip = [...previewHost.querySelectorAll('[aria-describedby]')].some(element =>
+        (element.getAttribute('aria-describedby') ?? '').split(/\s+/).some(id =>
+          document.getElementById(id)?.getAttribute('role') === 'tooltip',
+        ),
+      );
+      if ((popup && !previewHost.contains(popup)) || hasPreviewTooltip) return;
       if (event.isComposing || event.keyCode === 229) {
         // Leave the IME's default cancellation intact, without dismissing the
         // search or the preview through a later Escape listener.
@@ -757,7 +765,7 @@ export function FindInPageBar() {
             applySearch(committed, 0, true);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
+            if (e.key === 'Escape' && !e.defaultPrevented) {
               e.preventDefault();
               close();
             } else if (

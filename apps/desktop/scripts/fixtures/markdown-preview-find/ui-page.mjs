@@ -4,13 +4,25 @@ export default {
   name: 'markdown-preview-find',
   entry: './markdown-preview-find-fixture.tsx',
   viewport: { width: 1040, height: 760 },
-  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar and shortcut ownership',
-  notCovered: 'Installed release, native menus, PDF/draw.io viewing and IPC file loading; benign file data is supplied by the fixture',
+  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar, ChatInput keyboard handling and shortcut ownership',
+  notCovered: 'Installed release, native menus/IME, PDF/draw.io, file/search backends, microphone capture and ASR; file/search data and voice state are controlled fixtures',
   stubs: {
     'src/renderer/features/cc-agent/workdir-browse/PdfPreview':
       'export function PdfPreview() { throw new Error("PDF is outside this Markdown fixture"); }',
     'src/renderer/features/cc-agent/workdir-browse/DrawioPreview':
       'export function DrawioPreview() { throw new Error("draw.io is outside this Markdown fixture"); }',
+    'src/renderer/voice-input/useVoiceInput': `
+      import { useState } from 'react';
+      export function useVoiceInput() {
+        const [state, setState] = useState('listening');
+        window.__fixtureVoiceState = state;
+        return { state, isListening: state === 'listening', isBusy: state !== 'idle',
+          draftText: state === 'idle' ? '' : '保留的语音草稿', draftSource: 'partial', draftRange: null,
+          getState: () => state, prepare: async () => {},
+          start: async () => setState('listening'), stop: async () => setState('idle'),
+          cancel: async () => { window.__fixtureVoiceCancels = (window.__fixtureVoiceCancels || 0) + 1; setState('idle'); },
+          getLastRefinement: () => null, getLastSubmittedText: () => '' };
+      }`,
   },
   cases: {
     default: { about: 'Document-only matching, visible pointer targets, table navigation and Escape order' },
@@ -21,6 +33,8 @@ export default {
     'ime-escape': { about: 'An IME-cancelling Escape and its repeats keep search open until a new press' },
     'outside-focus': { about: 'Escape closes find first even after Tab reaches the backdrop or covered page' },
     'background-project-search': { about: 'The covered project-search sidebar retains its mode and query until the document closes' },
+    'background-voice': { about: 'Preview Escape leaves the real composer voice-cancel handler untouched until the document closes' },
+    'toolbar-tooltip': { about: 'Focused and hovered toolbar tooltips own Escape before document find' },
   },
   async check(page, ui) {
     const findKey = ui.platform === 'darwin' ? 'Meta+f' : 'Control+f';
@@ -32,7 +46,7 @@ export default {
     if (projectSearch) {
       await page.getByRole('button', { name: await ui.t('ccAgent.workdirBrowse.searchPanel.searchFiles'), exact: true }).click();
       await projectInput.fill('needle');
-    } else if (ui.case !== 'focus-restore') {
+    } else if (!['focus-restore', 'toolbar-tooltip'].includes(ui.case)) {
       await page.keyboard.press(findKey);
       if (editor) await page.locator('[data-doc-search-bar]').waitFor();
       else await page.getByRole('searchbox').waitFor();
@@ -58,7 +72,7 @@ export default {
     }
     await card.getByRole('heading', { name: 'Markdown 查找验证', exact: true }).waitFor();
     const opener = card.getByRole('button', { name: await ui.t('chat.textLightbox.copyAll'), exact: true });
-    if (ui.case === 'focus-restore') await opener.focus();
+    if (['focus-restore', 'toolbar-tooltip'].includes(ui.case)) await opener.focus();
     await page.keyboard.press(findKey);
     await ui.capture('preview-find-opened');
     await body.waitFor();
@@ -71,6 +85,28 @@ export default {
       return [...CSS.highlights.get('cindy-find-in-page-match')].every(range => root.contains(range.startContainer));
     }), true);
     await ui.capture('document-search');
+    if (ui.case === 'toolbar-tooltip') {
+      for (const interaction of ['focus', 'hover']) {
+        if (interaction === 'focus') {
+          for (let tab = 0; tab < 20 && !await opener.evaluate(el => document.activeElement === el); tab += 1) {
+            await page.keyboard.press('Shift+Tab');
+          }
+          assert.equal(await opener.evaluate(el => document.activeElement === el), true);
+        } else {
+          await input.focus();
+          await opener.hover();
+        }
+        const tooltip = page.getByRole('tooltip', { name: await ui.t('chat.textLightbox.copyAll'), exact: true });
+        await tooltip.waitFor();
+        const tooltipId = await tooltip.getAttribute('id');
+        await page.keyboard.press('Escape');
+        assert.equal(await input.isVisible(), true);
+        await page.locator(`[id="${tooltipId}"]`).waitFor({ state: 'detached' });
+        await card.getByText('1/2', { exact: true }).waitFor();
+        await body.click({ position: { x: 20, y: 120 } });
+      }
+      await ui.capture('tooltip-keeps-search');
+    }
     if (ui.case === 'ime-escape') {
       // Chromium composition/key event sequence, not a native IME candidate UI.
       await input.dispatchEvent('compositionstart');
@@ -149,6 +185,10 @@ export default {
       assert.equal(await projectInput.isVisible(), true);
       assert.equal(await projectInput.inputValue(), 'needle');
     }
+    if (ui.case === 'background-voice') {
+      assert.equal(await page.evaluate(() => window.__fixtureVoiceCancels || 0), 0);
+      assert.equal(await page.evaluate(() => window.__fixtureVoiceState), 'listening');
+    }
     if (ui.case === 'focus-restore') {
       assert.equal(await opener.evaluate(el => document.activeElement === el), true);
       // A toolbar tooltip owns its own Escape before the document. Reopen it
@@ -171,6 +211,12 @@ export default {
       assert.equal(await projectInput.inputValue(), 'needle');
       await page.keyboard.press('Escape');
       await projectInput.waitFor({ state: 'hidden' });
+    }
+    if (ui.case === 'background-voice') {
+      assert.equal(await page.evaluate(() => window.__fixtureVoiceCancels || 0), 0);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.evaluate(() => window.__fixtureVoiceCancels), 1);
+      assert.equal(await page.evaluate(() => window.__fixtureVoiceState), 'idle');
     }
     await page.keyboard.press(findKey);
     if (editor) await page.locator('[data-doc-search-bar] input').fill('苹果');

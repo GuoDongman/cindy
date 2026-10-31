@@ -4,6 +4,9 @@ import { TextLightbox } from '../../../src/renderer/components/chat/TextLightbox
 import { FindInPageBar } from '../../../src/renderer/components/find-in-page/FindInPageBar';
 import { FileBodyView } from '../../../src/renderer/features/cc-agent/workdir-browse/FileBodyView';
 import { WorkdirBrowseSidebar } from '../../../src/renderer/features/cc-agent/workdir-browse/WorkdirBrowseSidebar';
+import { ChatInput } from '../../../src/renderer/components/new-chat/ChatInput';
+import { useAttachments } from '../../../src/renderer/hooks/useAttachments';
+import { getDefaultVoiceInputSettings } from '../../../src/shared/voiceInputData';
 
 const markdown = [
   '# Markdown 查找验证',
@@ -12,13 +15,22 @@ const markdown = [
   '| 内容 | 数量 |\n| --- | --- |\n| 苹果 | 2 |',
 ].join('\n\n');
 
-function Fixture({ editor, projectSearch }: { editor: boolean; projectSearch: boolean }) {
+function VoiceComposer() {
+  const attachments = useAttachments('fixture-voice');
+  return <ChatInput sessionId="fixture-voice" initialWorkingDir="/fixture"
+    runtimeAgentKind="codex" vendorKey="codex" deviceLinkDeviceId={null}
+    initialModel="fixture-chat" initialProviderId="openai" attachmentState={attachments}
+    hideRuntimeControls showFolderPicker={false} disableAutofocus onSend={async () => true} />;
+}
+
+function Fixture({ editor, projectSearch, voice }: { editor: boolean; projectSearch: boolean; voice: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <main className="flex h-screen flex-col gap-4 p-6">
         <p>背景聊天中的苹果不应计入文档搜索。</p>
         <button data-testid="open-preview" onClick={() => setOpen(true)}>打开 Markdown 示例</button>
+        {voice && <VoiceComposer />}
         {projectSearch && <div className="h-64 w-64"><WorkdirBrowseSidebar
           sessionId="fixture-session"
           workdir="/fixture"
@@ -71,7 +83,22 @@ mountPage({
       getState: () => ({ platform: ctx.platform, overrides: {}, globalFailures: [] }),
       onChanged: subscription('shortcuts'),
     },
-    voiceInput: { getDataSnapshot: () => ({ settings: {} }), onDataChanged: subscription('voice') },
+    voiceInput: {
+      getDataSnapshot: () => ({ settings: { ...getDefaultVoiceInputSettings(ctx.platform), playInteractionSound: false } }),
+      onDataChanged: subscription('voice'),
+      getMicrophonePermissionCached: () => ({ ok: true, status: 'granted' }),
+      onGlobalShortcutTrigger: subscription('voice-shortcut'),
+    },
+    maker: {
+      onDesktopCommandTriggered: subscription('desktop-command'),
+      onSessionCredentialSwitchApplied: subscription('credential-applied'),
+      onSessionCredentialSwitchFailed: subscription('credential-failed'),
+      onPiPackagesChanged: subscription('pi-packages'),
+      listAgentSkills: async () => ({ success: true, skills: [] }),
+      getSessionAgentSwitchIntent: async () => null,
+    },
+    deviceLink: { onRemotePush: subscription('remote-push') },
+    ghosts: { listSync: () => ({ ghosts: [] }) },
   }),
-  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} projectSearch={ctx.case === 'background-project-search'} />,
+  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} projectSearch={ctx.case === 'background-project-search'} voice={ctx.case === 'background-voice'} />,
 });
