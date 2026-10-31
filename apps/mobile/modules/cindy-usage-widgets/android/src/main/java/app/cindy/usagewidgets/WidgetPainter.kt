@@ -83,6 +83,9 @@ class WidgetPainter(val context: Context, val canvas: Canvas, val palette: Widge
   fun fitText(
     text: String, x: Float, top: Float, style: TextStyle, width: Float, align: Align = Align.Start, minScale: Float = 1f,
   ): Float {
+    // The line box of the unscaled style keeps the baseline still when the text shrinks. It must be read
+    // first: lineHeight() configures the shared paint, which would undo the shrink below.
+    val box = lineHeight(style)
     var size = style.size
     var p = configure(style)
     var measured = p.measureText(text)
@@ -99,8 +102,6 @@ class WidgetPainter(val context: Context, val canvas: Canvas, val palette: Widge
       Align.Center -> x + (width - shownWidth) / 2
       Align.End -> x + width - shownWidth
     }
-    // Keep the line box of the unscaled style so shrinking does not move the baseline.
-    val box = lineHeight(style)
     val baselineTop = top + (box - (metrics.descent - metrics.ascent)) / 2
     canvas.drawText(shown, left, baselineTop - metrics.ascent, p)
     return shownWidth

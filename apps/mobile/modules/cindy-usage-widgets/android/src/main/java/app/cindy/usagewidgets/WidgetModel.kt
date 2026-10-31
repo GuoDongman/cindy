@@ -16,11 +16,11 @@ class WidgetSource(json: JSONObject) {
   val id: String = json.getString("id")
   val kind: String = json.getString("kind")
   val name: String = json.getString("name")
-  val logo: String? = json.optString("logo").ifEmpty { null }
+  val logo: String? = json.nullableString("logo")
   val monogram: String = json.optString("monogram")
-  val value: String? = json.optString("value").ifEmpty { null }
-  val unit: String? = json.optString("unit").ifEmpty { null }
-  val label: String? = json.optString("label").ifEmpty { null }
+  val value: String? = json.nullableString("value")
+  val unit: String? = json.nullableString("unit")
+  val label: String? = json.nullableString("label")
   val level: String = json.optString("level", "normal")
   val fill: Double = json.optDouble("fill", 0.0)
   val reserve: Boolean = json.optBoolean("reserve", false)
@@ -49,8 +49,8 @@ class WidgetDetail(json: JSONObject) {
   val plan: String = json.optString("plan")
   val rings: List<WidgetRing> = json.optJSONArray("rings").objects().map(::WidgetRing)
   val bigValue: String = json.optString("bigValue")
-  val bigUnit: String? = json.optString("bigUnit").ifEmpty { null }
-  val bigColor: String? = json.optString("bigColor").ifEmpty { null }
+  val bigUnit: String? = json.nullableString("bigUnit")
+  val bigColor: String? = json.nullableString("bigColor")
   val bigCompact: Boolean = json.optBoolean("bigCompact", false)
   val bigCaption: String = json.optString("bigCaption")
   val legend: List<WidgetLegend> = json.optJSONArray("legend").objects().map(::WidgetLegend)
@@ -122,7 +122,7 @@ sealed class WidgetState {
 class WidgetStore(json: JSONObject) {
   class Computer(val id: String, val name: String)
 
-  val autoDeviceId: String? = json.optString("autoDeviceId").ifEmpty { null }
+  val autoDeviceId: String? = json.nullableString("autoDeviceId")
   val computers: List<Computer> = json.optJSONArray("computers").objects().map { Computer(it.getString("id"), it.optString("name")) }
   private val states: JSONObject = json.optJSONObject("states") ?: JSONObject()
 
@@ -187,6 +187,10 @@ class WidgetStore(json: JSONObject) {
     }
   }
 }
+
+/** A string field that may be missing, an explicit JSON null (`optString` would turn that into "null") or empty. */
+private fun JSONObject.nullableString(name: String): String? =
+  if (!has(name) || isNull(name)) null else optString(name).ifEmpty { null }
 
 private fun JSONArray?.objects(): List<JSONObject> = this?.let { array -> (0 until array.length()).mapNotNull { array.optJSONObject(it) } } ?: emptyList()
 private fun JSONArray?.doubles(): List<Double> = this?.let { array -> (0 until array.length()).map { array.optDouble(it, 0.0) } } ?: emptyList()

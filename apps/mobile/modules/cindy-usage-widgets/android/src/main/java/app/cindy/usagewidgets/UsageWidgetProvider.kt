@@ -7,7 +7,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.util.SizeF
 import android.widget.RemoteViews
 
 /**
@@ -57,6 +59,27 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
       }
     }
 
+    private val redraw = java.util.concurrent.Executors.newSingleThreadExecutor { task -> Thread(task, "cindy-usage-widgets").apply { isDaemon = true } }
+    private val redrawQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Redraws on a background thread, so the app's JS thread never waits for the bitmaps. One thread runs
+     * the draws in order and every draw reads the file as it is then, so a draw that started before a
+     * sign-out cannot leave old data behind: the redraw queued after the sign-out runs last.
+     */
+    fun updateAllAsync(context: Context) {
+      val app = context.applicationContext
+      if (!redrawQueued.compareAndSet(false, true)) return
+      redraw.execute {
+        redrawQueued.set(false)
+        try {
+          updateAll(app)
+        } catch (_: Exception) {
+          // A launcher that went away mid-update; the next update draws again.
+        }
+      }
+    }
+
     /** Redraws every widget of both kinds, for example after the app wrote new data. */
     fun updateAll(context: Context) {
       val manager = AppWidgetManager.getInstance(context)
@@ -66,30 +89,48 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
     }
 
     fun update(context: Context, manager: AppWidgetManager, appWidgetId: Int, kind: WidgetKind) {
-      val density = context.resources.displayMetrics.density
       val options = manager.getAppWidgetOptions(appWidgetId)
-      val landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-      val width = (if (landscape) options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH) else options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH))
-        .takeIf { it > 0 }?.toFloat() ?: 160f
-      val height = (if (landscape) options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) else options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT))
-        .takeIf { it > 0 }?.toFloat() ?: 160f
       val computer = WidgetStore.computerOf(context, appWidgetId)
       if (computer != WidgetStore.AUTO) WidgetStore.recordPin(context, computer)
       val state = WidgetStore.loadState(context, computer)
-      // A remote bitmap above the launcher's memory budget is rejected (two are sent, one per theme).
-      var drawDensity = density
-      val metrics = context.resources.displayMetrics
-      val budget = metrics.widthPixels.toLong() * metrics.heightPixels * 4 * 3 / 2
-      while (width * drawDensity * height * drawDensity * 4 > budget / 2 && drawDensity > 1f) drawDensity -= 0.25f
       val now = System.currentTimeMillis()
+      // Android 12+ lists every size the launcher may show (portrait / landscape, folded / unfolded): one
+      // drawing per size, and the launcher picks. Older systems only give a min/max range of the current
+      // orientation, so one drawing for that.
+      val sizes = if (Build.VERSION.SDK_INT >= 31) {
+        options.getParcelableArrayList<SizeF>(AppWidgetManager.OPTION_APPWIDGET_SIZES)?.filter { it.width > 0 && it.height > 0 }
+      } else {
+        null
+      }
+      val views = if (!sizes.isNullOrEmpty()) {
+        val distinct = sizes.distinctBy { "${it.width.toInt()}x${it.height.toInt()}" }.take(4)
+        RemoteViews(distinct.associateWith { buildViews(context, kind, state, it.width, it.height, distinct.size, now) })
+      } else {
+        val landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val width = (if (landscape) options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH) else options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH))
+          .takeIf { it > 0 }?.toFloat() ?: 160f
+        val height = (if (landscape) options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) else options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT))
+          .takeIf { it > 0 }?.toFloat() ?: 160f
+        buildViews(context, kind, state, width, height, 1, now)
+      }
+      manager.updateAppWidget(appWidgetId, views)
+    }
+
+    /** One drawing at one size: both themes as bitmaps, kept under the launcher's memory budget for `sharedBy` sizes. */
+    private fun buildViews(context: Context, kind: WidgetKind, state: WidgetState, width: Float, height: Float, sharedBy: Int, now: Long): RemoteViews {
+      val metrics = context.resources.displayMetrics
+      var density = metrics.density
+      // A remote bitmap above the launcher's memory budget is rejected (two per size are sent, one per theme).
+      val budget = metrics.widthPixels.toLong() * metrics.heightPixels * 4 * 3 / 2 / (2 * sharedBy)
+      while (width * density * height * density * 4 > budget && density > 1f) density -= 0.25f
       val views = RemoteViews(context.packageName, R.layout.cindy_usage_widget)
       val description = describe(context, kind, state)
       for ((dark, id) in listOf(false to R.id.cindy_usage_widget_image, true to R.id.cindy_usage_widget_image_dark)) {
-        views.setImageViewBitmap(id, WidgetRenderer.render(context, kind, state, width, height, drawDensity, dark, now))
+        views.setImageViewBitmap(id, WidgetRenderer.render(context, kind, state, width, height, density, dark, now))
         views.setContentDescription(id, description)
       }
       openAppIntent(context)?.let { views.setOnClickPendingIntent(R.id.cindy_usage_widget_root, it) }
-      manager.updateAppWidget(appWidgetId, views)
+      return views
     }
 
     private fun describe(context: Context, kind: WidgetKind, state: WidgetState): String {

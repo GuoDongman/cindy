@@ -18,8 +18,9 @@ enum class WidgetFamily(val refWidth: Float, val refHeight: Float) {
   companion object {
     /** Which iOS layout a launcher cell grid is closest to; a single row gets the strip. */
     fun of(widthDp: Float, heightDp: Float): WidgetFamily = when {
-      // One launcher row is 40–110dp tall depending on the launcher; wide and flat is where the strip beats a shrunk tile.
-      heightDp < 120f && widthDp >= heightDp * 1.4f -> Strip
+      // One launcher row is 40–110dp tall depending on the launcher. Wide enough for the sources to sit side by
+      // side (four fit from about 260dp), the strip beats a shrunk tile; a narrower row keeps the shrunk Small tile.
+      heightDp < 120f && widthDp >= 250f && widthDp >= heightDp * 1.4f -> Strip
       widthDp < 220f -> Small
       heightDp >= 240f -> Large
       else -> Medium

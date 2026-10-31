@@ -26,7 +26,7 @@ class CindyUsageWidgetsModule : Module() {
       } catch (_: Exception) {
         return@Function false
       }
-      UsageWidgetProviderBase.updateAll(context)
+      UsageWidgetProviderBase.updateAllAsync(context)
       true
     }
 
@@ -45,7 +45,7 @@ class CindyUsageWidgetsModule : Module() {
     Function("clearSnapshot") {
       val context = appContext.reactContext ?: return@Function null
       WidgetStore.file(context).delete()
-      UsageWidgetProviderBase.updateAll(context)
+      UsageWidgetProviderBase.updateAllAsync(context)
       null
     }
   }
