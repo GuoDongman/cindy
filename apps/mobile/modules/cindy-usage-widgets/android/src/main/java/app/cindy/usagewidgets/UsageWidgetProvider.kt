@@ -18,12 +18,14 @@ import android.widget.RemoteViews
  * reset countdowns and the "updated" age stay current.
  */
 abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidgetProvider() {
+  // Drawing is the slow part (a bitmap per size and theme), so no update runs on the receiver's thread: it
+  // goes to the one drawing thread and the broadcast stays pending until the widgets are done.
   override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
-    for (id in appWidgetIds) update(context, manager, id, kind)
+    updateAsync(context, appWidgetIds, kind, goAsync())
   }
 
   override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
-    update(context, manager, appWidgetId, kind)
+    updateAsync(context, intArrayOf(appWidgetId), kind, goAsync())
   }
 
   /**
@@ -78,6 +80,26 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
           updateAll(app)
         } catch (_: Exception) {
           // A launcher that went away mid-update; the next update draws again.
+        }
+      }
+    }
+
+    /** Draws the given widgets of one kind on the drawing thread, then releases the broadcast, if any. */
+    fun updateAsync(context: Context, appWidgetIds: IntArray, kind: WidgetKind, pending: PendingResult? = null) {
+      val app = context.applicationContext
+      redraw.execute {
+        try {
+          val manager = AppWidgetManager.getInstance(app)
+          for (id in appWidgetIds) {
+            // One widget the launcher refuses must not stop the others from being drawn.
+            try {
+              update(app, manager, id, kind)
+            } catch (_: Exception) {
+              // Drawn again at the next update.
+            }
+          }
+        } finally {
+          pending?.finish()
         }
       }
     }

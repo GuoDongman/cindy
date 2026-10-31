@@ -65,9 +65,7 @@ class ComputerConfigActivity : Activity() {
   private fun done(computer: String, pinned: List<String>? = null, hidden: List<String>? = null) {
     WidgetStore.setComputer(this, appWidgetId, computer)
     if (pinned != null && hidden != null) WidgetStore.setAccounts(this, appWidgetId, pinned, hidden)
-    UsageWidgetProviderBase.update(
-      this, AppWidgetManager.getInstance(this), appWidgetId, kindOf(AppWidgetManager.getInstance(this), appWidgetId),
-    )
+    UsageWidgetProviderBase.updateAsync(this, intArrayOf(appWidgetId), kindOf(AppWidgetManager.getInstance(this), appWidgetId))
     setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId))
     finish()
   }
