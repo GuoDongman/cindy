@@ -694,9 +694,11 @@ export type GhostMessageHook = (typeof GHOST_MESSAGE_HOOKS)[number];
 export const GHOST_CONTROL_POINT_FAILURE_ACTIONS = ['allow', 'skip', 'block'] as const;
 export type GhostControlPointFailureAction = (typeof GHOST_CONTROL_POINT_FAILURE_ACTIONS)[number];
 
+export type GhostControlPointAction = 'allow' | 'skip' | 'block' | 'route';
+
 export interface GhostControlPointSpec {
-  /** 插件可返回的裁决(allow 恒可用)。 */
-  actions: readonly ('allow' | 'skip' | 'block')[];
+  /** 插件可返回的裁决(allow 恒可用)。route 只用于开新任务时选模型。 */
+  actions: readonly GhostControlPointAction[];
   /** 用户可选的出错处理。 */
   failureActions: readonly GhostControlPointFailureAction[];
   /** 任务编辑页的默认出错处理；与脚本前置检查一致，出错即停止并记为失败。 */
@@ -727,6 +729,20 @@ export const GHOST_CONTROL_POINTS = {
     permissionKey: 'subscribe:hooks:routine-run',
     labelKey: 'subscribeRoutineRun',
     detailKey: 'subscribeRoutineRunDetail',
+  },
+  /**
+   * 开新任务时(2026-10-31)：用户在新任务的模型选择器里选了「让插件选」，第一条消息发出前
+   * 问一次插件用哪个模型；之后整个任务不再换(保住缓存)，伙伴对话不问。插件只能从用户已
+   * 连接的模型里选，宿主校验；出错一律用用户原来的模型，用户在等，时限短。
+   */
+  'will-start-task': {
+    actions: ['allow', 'route'],
+    failureActions: ['allow'],
+    defaultOnFailure: 'allow',
+    timeoutMs: 8_000,
+    permissionKey: 'subscribe:hooks:start-task',
+    labelKey: 'subscribeStartTask',
+    detailKey: 'subscribeStartTaskDetail',
   },
 } as const satisfies Record<string, GhostControlPointSpec>;
 export type GhostControlPointId = keyof typeof GHOST_CONTROL_POINTS;
@@ -6858,6 +6874,11 @@ export type GhostPipeHostRequest =
       kind: 'control-points';
     };
 
+/** 新任务「让插件选」的结果(Host 界面用)。kept = 用用户原来选的模型。 */
+export type GhostStartTaskRouteResult =
+  | { outcome: 'routed'; pluginName: string; route: GhostModelRoute; modelName: string; reason: string }
+  | { outcome: 'kept'; pluginName: string; why: 'no-opinion' | 'failed' | 'unavailable-route'; modelName: string };
+
 /** 任务「前置检查」可选的插件(Host 界面用)。 */
 export interface GhostControlPointCandidate {
   /** 插件实例 id,任务里保存的就是它。 */
@@ -6868,7 +6889,7 @@ export interface GhostControlPointCandidate {
 /** `host-request {kind:'control-points'}` 的单项。 */
 export interface GhostControlPointInfo {
   id: GhostControlPointId;
-  actions: readonly ('allow' | 'skip' | 'block')[];
+  actions: readonly GhostControlPointAction[];
   timeoutMs: number;
   /** 本插件 manifest 是否声明了该节点。 */
   declared: boolean;
@@ -8694,7 +8715,24 @@ export interface GhostRoutineRunPointData {
   events: { id: string; type: string; sourceId?: string; occurredAt: number; subject?: string; data: Record<string, unknown> }[];
 }
 
-export type GhostControlPointData = GhostScheduleRunPointData | GhostRoutineRunPointData;
+/** 模型路由(插件看到与回传的同一形状)。agentKind: cc = Claude Code。 */
+export interface GhostModelRoute {
+  agentKind: 'cc' | 'codex' | 'pi';
+  model: string;
+  providerId: string;
+  effort?: string;
+}
+
+/** 开新任务时(will-start-task)交给插件的数据：第一条消息与用户当前选的模型。不含本机路径。 */
+export interface GhostStartTaskPointData {
+  /** 第一条消息正文(附件只给数量)。 */
+  text: string;
+  attachmentCount: number;
+  /** 用户在选择器里原本选的模型；插件拿不准时用它。 */
+  route: GhostModelRoute;
+}
+
+export type GhostControlPointData = GhostScheduleRunPointData | GhostRoutineRunPointData | GhostStartTaskPointData;
 
 /**
  * 控制节点裁决结果(宿主消费)。allow = 任务选定的插件不反对；skip/block 由该插件
@@ -8709,7 +8747,8 @@ export type GhostControlPointResult =
       reason: string;
       /** true = 插件没有按时答复，按用户的出错处理设置得出。 */
       failure: boolean;
-    };
+    }
+  | { action: 'route'; ghostId: string; ghostName: string; route: GhostModelRoute; reason: string };
 
 
 /**
@@ -8836,7 +8875,9 @@ export type GhostPipeEventPush =
 export interface GhostPipeEventVerdict {
   type: 'event-verdict';
   hookId: string;
-  action: 'allow' | 'block' | 'rewrite' | 'render' | 'skip';
+  action: 'allow' | 'block' | 'rewrite' | 'render' | 'skip' | 'route';
+  /** route 时选定的模型(仅开新任务时)。 */
+  route?: GhostModelRoute;
   /** block 时展示的理由。 */
   reason?: string;
   /** rewrite 时的新正文(替换消息正文;其它 action 忽略)。 */

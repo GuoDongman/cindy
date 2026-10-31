@@ -195,6 +195,11 @@ export interface NewMakerDraft {
    * 这样「恢复推荐」只能撤销调档意图，不会顺手清掉真正的路由选择。
    */
   defaultTupleSelectionCustomized: boolean;
+  /**
+   * 新任务「让插件选」(2026-10-31)：选中后新任务第一条消息发出前问一次这个插件用哪个模型；
+   * 记住为新任务默认，用户手动选任何模型即清除。null = 不用。
+   */
+  modelRouter: { pluginId: string } | null;
 }
 
 /**
@@ -270,6 +275,7 @@ function makeDefault(): NewMakerDraft {
     defaultTupleCustomized: false,
     newChatDefaultPermissionMode: null,
     defaultTupleSelectionCustomized: false,
+    modelRouter: null,
   };
 }
 
@@ -508,7 +514,14 @@ function sanitize(raw: unknown): NewMakerDraft {
     defaultTupleCustomized,
     newChatDefaultPermissionMode,
     defaultTupleSelectionCustomized,
+    modelRouter: sanitizeModelRouter(r.modelRouter),
   };
+}
+
+function sanitizeModelRouter(value: unknown): NewMakerDraft['modelRouter'] {
+  if (!value || typeof value !== 'object') return null;
+  const pluginId = (value as { pluginId?: unknown }).pluginId;
+  return typeof pluginId === 'string' && pluginId.trim() && pluginId.length <= 512 ? { pluginId } : null;
 }
 
 function loadFromStorage(): NewMakerDraft {

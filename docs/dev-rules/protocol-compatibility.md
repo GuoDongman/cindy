@@ -1181,6 +1181,16 @@ SSH 主机不自动成为设备目录成员。实现与回归见 `mcp-integratio
 例行任务先关闭再到达；Mobile 与项目自动化配置不编辑、不保存它。不新增 device-link channel：插件下拉用
 本机专用的 `ghosts:control-points:candidates`，不进 allowlist。
 
+## 新任务「让插件选」模型（2026-10-31）
+
+插件 `event-verdict` 新增 `action: 'route'` 与 `route: { agentKind, model, providerId, effort? }`，只在新控制节点
+`will-start-task` 生效；旧 Host 丢弃不认识的 action，插件按超时处理（沿用原模型）。新增本机专用 IPC
+`ghosts:start-task:route`（Renderer 发首条消息前请求，Main 询问插件并核验模型），不进 device-link allowlist。
+新任务草稿（本机 `localStorage`）新增 `modelRouter: { pluginId } | null`，只在本机草稿使用，不同步、
+不上传；远程电脑、SSH 主机、多 Agent 协同草稿不提供。首条消息后写一条空正文 assistant 消息，
+`agentMeta.pluginModelRoute = { pluginName, outcome: 'routed' | 'kept', modelName, effort?, reason?, why? }`，
+Desktop 与 Mobile 渲染为系统说明行；旧端没有对应渲染，按普通的空 assistant 消息处理；历史投影不计入正文。
+
 ## 定时任务的 Agent 运行位置（2026-10-22）
 
 `maker:schedule:*` 读回的定时任务与写入参数新增可选 `agentDeviceId`（每次新建任务时 Agent 在哪台电脑或
