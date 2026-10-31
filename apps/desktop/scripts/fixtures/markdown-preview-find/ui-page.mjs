@@ -34,7 +34,7 @@ export default {
     'outside-focus': { about: 'Escape closes find first even after Tab reaches the backdrop or covered page' },
     'background-project-search': { about: 'The covered project-search sidebar retains its mode and query until the document closes' },
     'background-voice': { about: 'Preview Escape leaves the real composer voice-cancel handler untouched until the document closes' },
-    'fullscreen-video': { about: 'A real fullscreen video menu inside the preview owns Escape before find' },
+    'fullscreen-video': { about: 'Fullscreen video exit and menus preserve search until a fresh Escape' },
     'toolbar-tooltip': { about: 'Focused and hovered toolbar tooltips own Escape before document find' },
   },
   async check(page, ui) {
@@ -114,7 +114,42 @@ export default {
     if (ui.case === 'fullscreen-video') {
       const video = card.locator('video');
       await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
-      await video.evaluate(player => player.requestFullscreen());
+      for (const order of ['key-first', 'exit-first']) {
+        await video.evaluate(async player => {
+          const changed = new Promise(resolve => document.addEventListener('fullscreenchange', resolve, { once: true }));
+          await player.requestFullscreen();
+          await changed;
+        });
+        await page.waitForFunction(() => document.fullscreenElement?.tagName === 'VIDEO');
+        if (order === 'key-first') {
+          await page.keyboard.press('Escape');
+        } else {
+          // Actual Fullscreen API plus Chromium events exercises the alternate
+          // OS ordering; this is not a second native-keyboard claim.
+          await video.evaluate(async player => {
+            const changed = new Promise(resolve => document.addEventListener('fullscreenchange', resolve, { once: true }));
+            await document.exitFullscreen();
+            await changed;
+            player.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+            player.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', bubbles: true }));
+          });
+        }
+        assert.equal(await input.count(), 1);
+        await page.waitForFunction(() => !document.fullscreenElement);
+        await card.getByText('1/2', { exact: true }).waitFor();
+        await ui.capture(`fullscreen-${order}-keeps-search`);
+        await page.keyboard.press('Escape');
+        await input.waitFor({ state: 'detached' });
+        assert.equal(await card.count(), 1);
+        await page.keyboard.press(findKey);
+        await input.fill('苹果');
+        await card.getByText('1/2', { exact: true }).waitFor();
+      }
+      await video.evaluate(async player => {
+        const changed = new Promise(resolve => document.addEventListener('fullscreenchange', resolve, { once: true }));
+        await player.requestFullscreen();
+        await changed;
+      });
       await page.waitForFunction(() => document.fullscreenElement?.tagName === 'VIDEO');
       await video.click({ button: 'right', position: { x: 180, y: 140 } });
       const menu = card.getByRole('menu');
@@ -125,7 +160,8 @@ export default {
       await menu.waitFor({ state: 'detached' });
       assert.equal(await input.count(), 1);
       if (await page.evaluate(() => Boolean(document.fullscreenElement))) {
-        await page.evaluate(() => document.exitFullscreen());
+        await page.keyboard.press('Escape');
+        assert.equal(await input.count(), 1);
       }
       await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('dialog'));
       await card.getByText('1/2', { exact: true }).waitFor();

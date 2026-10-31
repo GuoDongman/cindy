@@ -553,6 +553,20 @@ export function FindInPageBar() {
   // lightbox's document-level Escape handler sees only the next Escape.
   useEffect(() => {
     if (!open || !previewHost) return;
+    let fullscreen = previewHost.contains(document.fullscreenElement);
+    let exitedFullscreenAt = -Infinity;
+    let handledFullscreenExit = false;
+    const onFullscreenChange = () => {
+      const next = previewHost.contains(document.fullscreenElement);
+      if (fullscreen && !next) {
+        exitedFullscreenAt = handledFullscreenExit ? -Infinity : performance.now();
+      }
+      fullscreen = next;
+      handledFullscreenExit = false;
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') exitedFullscreenAt = -Infinity;
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || isLightboxCovered(previewHost)) return;
       // Menus own Escape whether portaled to the body or inside fullscreen media.
@@ -577,11 +591,28 @@ export function FindInPageBar() {
       }
       event.preventDefault();
       event.stopImmediatePropagation();
+      // Chromium can exit native fullscreen before delivering that same Esc.
+      // Consume either ordering without closing find; a fresh press still works.
+      const ownsNativeFullscreen = previewHost.contains(document.fullscreenElement);
+      if (fullscreen || ownsNativeFullscreen || performance.now() - exitedFullscreenAt < 250) {
+        exitedFullscreenAt = -Infinity;
+        handledFullscreenExit = fullscreen || ownsNativeFullscreen;
+        if (ownsNativeFullscreen) {
+          void document.exitFullscreen().catch(() => { handledFullscreenExit = false; });
+        }
+        return;
+      }
       // One physical press may cancel IME composition before repeats arrive.
       if (!event.repeat) close();
     };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
     window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
   }, [open, previewHost, close]);
 
   useEffect(() => () => clearFindHighlights(), []);
