@@ -29,7 +29,8 @@ const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
 const META = '.cindy-handoff.json';
 const DISK_NAME_CHARS = 64;
 const DISK_NAME_BYTES = 200;
-const WINDOWS_RESERVED_BASENAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+// Windows also reserves COM / LPT with superscript digits (`COM¹`).
+const WINDOWS_RESERVED_BASENAME_RE = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(\.|$)/i;
 const TABLE_MIME: Record<string, string> = {
   '.csv': 'text/csv; charset=utf-8',
   '.tsv': 'text/tab-separated-values; charset=utf-8',

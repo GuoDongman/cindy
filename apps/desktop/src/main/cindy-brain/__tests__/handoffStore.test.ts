@@ -78,7 +78,7 @@ describe('GhostHandoffStore', () => {
     const long = '季度销售数据汇总'.repeat(10) + '.xlsx';
     // Greptile 4431495701: a device name at the length limit must keep its `_` within it.
     const reservedLong = 'CON.' + 'a'.repeat(56) + '.csv';
-    const names = [long, 'CON.csv', 'report..', '???.csv', 'a:b.tsv', reservedLong];
+    const names = [long, 'CON.csv', 'report..', '???.csv', 'a:b.tsv', reservedLong, 'COM¹.csv'];
     const files = await s.import('art', names.map((name) => ({ name, bytes: bytes(name) })), () => {});
     const onDisk = files.map((file) => {
       const dir = path.join(root, 'art', file.ref.slice('handoff:'.length));
@@ -87,7 +87,7 @@ describe('GhostHandoffStore', () => {
 
     expect(onDisk).toEqual([
       ['季度销售数据汇总'.repeat(10).slice(0, 59) + '.xlsx'],
-      ['_CON.csv'], ['report'], ['file.csv'], ['ab.tsv'], ['_CON.' + 'a'.repeat(55) + '.csv'],
+      ['_CON.csv'], ['report'], ['file.csv'], ['ab.tsv'], ['_CON.' + 'a'.repeat(55) + '.csv'], ['_COM¹.csv'],
     ]);
     expect(files.map((file) => file.name)).toEqual(names);
     // The stored name must validate again on the next read, or the copy is swept as damaged.
