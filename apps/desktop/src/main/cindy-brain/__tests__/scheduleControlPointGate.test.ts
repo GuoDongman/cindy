@@ -2,7 +2,7 @@
 // the user configured was never sent, unlike a blocking pre-run script. Unit tier, no timers.
 import { describe, expect, it, vi } from 'vitest';
 import type { FireContext, Schedule } from '@cindy/maker-scheduler';
-import { screenScheduleRun } from '../controlPointGate';
+import { screenScheduleRun } from '../scheduleControlPointGate';
 
 const schedule = { id: 's1', name: 'Daily', prompt: 'go', preRunPlugin: { pluginId: 'p', onFailure: 'block' } } as unknown as Schedule;
 const ctx = { runId: 'r1', firedAt: 1, signal: new AbortController().signal } as unknown as FireContext;

@@ -66,7 +66,7 @@ import { buildForcedFailureRun } from './forcedFailureRun';
 import { ScriptScheduleRunner } from './script-runner';
 import { SchedulerScriptCapabilityBroker } from './script-capability-broker';
 import { DesktopNotifier } from './notifier';
-import { screenScheduleRun } from './controlPointGate';
+import { screenScheduleRun } from '../cindy-brain/scheduleControlPointGate.js';
 import { sendFeishuSessionNotification } from '../im/feishu/notificationOrigin';
 import { withScheduleLock } from './scheduleLock';
 import { wecomGroupNotificationService } from '../wecomGroupNotification';
