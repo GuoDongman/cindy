@@ -208,6 +208,20 @@ class WidgetStore(json: JSONObject) {
       prefs(context).edit().putString("computer.$appWidgetId", computer).apply()
     }
 
+    /**
+     * Signing out or switching account: every widget goes back to "automatic" with no placed or hidden
+     * accounts, and the recorded computers go. Those values name the previous account's computers and
+     * accounts, which the next account must neither see nor stay bound to.
+     */
+    fun clearAccountPreferences(context: Context) {
+      val prefs = prefs(context)
+      val editor = prefs.edit().remove(PINS_KEY)
+      for (key in prefs.all.keys) {
+        if (key.startsWith("computer.") || key.startsWith("pinned.") || key.startsWith("hidden.")) editor.remove(key)
+      }
+      editor.apply()
+    }
+
     fun forget(context: Context, appWidgetId: Int) {
       prefs(context).edit().remove("computer.$appWidgetId").remove("pinned.$appWidgetId").remove("hidden.$appWidgetId").apply()
     }

@@ -91,7 +91,10 @@ class ComputerConfigActivity : Activity() {
    */
   private inner class QuotaSettings(context: Context, private val computers: List<WidgetStore.Computer>) {
     private val ui = ContextThemeWrapper(context, dialogTheme())
+    // A computer that is gone (removed, remote control off, another account) shows as "automatic", so that is
+    // also what Done saves; otherwise the widget would keep the missing id and stay empty.
     private var computer = WidgetStore.computerOf(context, appWidgetId)
+      .takeIf { id -> id == WidgetStore.AUTO || computers.any { it.id == id } } ?: WidgetStore.AUTO
     private val pinned = WidgetStore.pinnedOf(context, appWidgetId).toMutableList()
     private val hidden = WidgetStore.hiddenOf(context, appWidgetId).toMutableList()
     private val accountsBox = LinearLayout(ui).apply { orientation = LinearLayout.VERTICAL }
@@ -122,7 +125,7 @@ class ComputerConfigActivity : Activity() {
           addView(RadioButton(ui).apply {
             this.id = View.generateViewId()
             text = names[index]
-            isChecked = id == computer || (index == 0 && computer !in ids)
+            isChecked = id == computer
             setOnCheckedChangeListener { _, checked ->
               if (checked && computer != id) {
                 computer = id

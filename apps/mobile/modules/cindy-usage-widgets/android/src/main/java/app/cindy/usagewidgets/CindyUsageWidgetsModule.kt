@@ -45,6 +45,7 @@ class CindyUsageWidgetsModule : Module() {
     Function("clearSnapshot") {
       val context = appContext.reactContext ?: return@Function null
       WidgetStore.file(context).delete()
+      WidgetStore.clearAccountPreferences(context)
       UsageWidgetProviderBase.updateAllAsync(context)
       null
     }
