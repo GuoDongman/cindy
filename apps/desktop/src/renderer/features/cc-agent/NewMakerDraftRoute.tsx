@@ -4783,6 +4783,8 @@ export function NewMakerDraftRoute() {
                   : {}),
                 ...(deferredUiAssignment ? { deferredUiAssignment } : {}),
               });
+              // 模型在建任务时已定，交接给会话页发送也要写说明行(说明行自己等首条消息落库)。
+              writePluginRouteNote(newSession.id);
               handOffDraftToSession();
               navigateToSession();
               return;

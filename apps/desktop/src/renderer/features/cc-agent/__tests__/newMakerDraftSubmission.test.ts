@@ -475,6 +475,19 @@ describe('homepage submission to Main admission and first-message handoff', () =
     expect(result.environment.chatPrefs.effort).toBe('medium');
     await vi.waitFor(() => expect(result.createNote).toHaveBeenCalledOnce());
   });
+  // Review of #8245: a first message starting with a slash command is handed to the session view,
+  // and that early return used to skip the note.
+  it('writes the plugin note when the first message is handed off as a slash command', async () => {
+    const result = await submit({
+      message: '/status', providers: [provider(), provider('other', ['high'])],
+      pluginRoute: async () => ({
+        outcome: 'routed', pluginName: 'Router', modelName: modelId, reason: 'fixture',
+        route: { agentKind: 'pi', model: modelId, providerId: 'other', effort: 'high' },
+      }),
+    });
+    expect(result.setPending).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(result.createNote).toHaveBeenCalledOnce());
+  });
   // /goal also starts a new task, so the picker's "Let a plugin choose" must apply to it too.
   it('creates a goal task with the route the plugin chose', async () => {
     const result = await submit({
