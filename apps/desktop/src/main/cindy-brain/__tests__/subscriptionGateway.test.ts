@@ -1503,3 +1503,49 @@ describe('GhostTurnOriginTracker', () => {
     expect(origin.acceptsInteraction(undefined)).toBe(false);
   });
 });
+
+// Bug/rule: control points (2026-10-31) must only reach plugins the user confirmed, let plugins only
+// tighten, and apply the user's failure setting when a plugin stays silent. Message-hook cases above
+// do not cover the approval filter, `skip`, or user-owned failure handling. Unit tier, fake timers.
+describe('control points', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const point = 'will-schedule-run' as const;
+  const data = {
+    scheduleId: 's1', runId: 'r1', name: 'Daily', prompt: 'summarize', executionMode: 'agent' as const,
+    trigger: 'cron' as const, firedAt: 1,
+  };
+  const approved = (id: string): InstalledGhost => ({ ...ghost(id, { hooks: [point] }), approvedControlPoints: [point] });
+
+  it('skips unconfirmed declarations and short-circuits on the first skip', async () => {
+    const { gw, sent, running } = makeGateway({
+      listGhosts: () => [ghost('pre', { hooks: [point] }), approved('p1'), approved('p2')],
+    });
+    running.add('pre').add('p1').add('p2');
+    const result = gw.screenControlPoint(point, data, () => 'allow');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map((item) => item.ghostId)).toEqual(['p1']);
+    expect(sent[0].payload).toMatchObject({ name: point, data, deadline: 1_000 + 30_000 });
+    const hookId = (sent[0].payload as { hookId: string }).hookId;
+    gw.handleVerdict('p1', { type: 'event-verdict', hookId, action: 'skip', reason: 'nothing new' });
+    expect(await result).toEqual({ action: 'skip', ghostId: 'p1', ghostName: '意识p1', reason: 'nothing new', failure: false });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('applies the user failure setting when the plugin does not answer', async () => {
+    const { gw, running } = makeGateway({ listGhosts: () => [approved('p1')] });
+    running.add('p1');
+    const blocked = gw.screenControlPoint(point, data, () => 'block');
+    await vi.advanceTimersByTimeAsync(30_000 + 10);
+    expect(await blocked).toMatchObject({ action: 'block', ghostId: 'p1', failure: true });
+
+    const allowed = gw.screenControlPoint(point, data, () => 'allow');
+    await vi.advanceTimersByTimeAsync(30_000 + 10);
+    expect(await allowed).toEqual({ action: 'allow' });
+  });
+});

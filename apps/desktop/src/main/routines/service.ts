@@ -28,6 +28,7 @@ import { runTaskActionRequest } from '../maker-ipc/taskActionAuthorization.js';
 import { RoutineFileStore } from './store.js';
 import { assertPreRunHookCommandSyntax } from '../scheduler-host/pre-run-hook.js';
 import { untrustedJsonBlock } from '../../shared/untrustedPrompt.js';
+import type { GhostControlPointResult, GhostRoutineRunPointData } from '../../shared/ghost.js';
 import { getCurrentDbClientSnapshot } from '../localDb/client/current.js';
 import { botProfiles } from '../localDb/schema.js';
 import { isCompanionShadowed } from '../companion-cloud/homes.js';
@@ -64,6 +65,8 @@ export interface RoutineHostDeps {
   deleteRoutineSession?(sessionId: string): Promise<void>;
   getScheduler(): Pick<Scheduler, 'runNow' | 'pause' | 'delete'> | null;
   getScheduleStorage(): Pick<ScheduleStorage, 'get' | 'insert' | 'update' | 'listRuns'>;
+  /** 插件控制节点 will-routine-run：在建任务、派发模型前询问插件是否执行。 */
+  screenControlPoint?(point: 'will-routine-run', data: GhostRoutineRunPointData): Promise<GhostControlPointResult>;
 }
 
 let hostDeps: RoutineHostDeps | undefined;
@@ -152,6 +155,11 @@ async function waitForStartupDependency<T>(
   }
 }
 
+function controlPointStopMessage(gate: Extract<GhostControlPointResult, { action: 'skip' | 'block' }>): string {
+  if (gate.failure) return `Plugin "${gate.ghostName}" did not answer in time; stopped by your failure setting`;
+  return gate.reason ? `Stopped by plugin "${gate.ghostName}": ${gate.reason}` : `Stopped by plugin "${gate.ghostName}"`;
+}
+
 /** Each standing instruction owns one persistent companion lane. */
 async function execute(scope: string, routine: Routine, run: RoutineRun, signal: AbortSignal, canDispatch: () => boolean) {
   assertScope(scope);
@@ -189,6 +197,33 @@ async function execute(scope: string, routine: Routine, run: RoutineRun, signal:
     events = allowed.events;
     const engineCanDispatch = canDispatch;
     canDispatch = () => engineCanDispatch() && allowed.canDispatch();
+  }
+  // 插件控制节点：放在建任务之前，跳过时不留空壳任务、不调用模型。
+  const gate = await getRoutineHost().screenControlPoint?.('will-routine-run', {
+    routineId: routine.id,
+    runId: run.id,
+    botId: routine.botId,
+    name: routine.name,
+    prompt: routine.prompt,
+    builtin: routine.builtin ?? null,
+    triggerIds: run.triggerIds,
+    events: events.map(({ sourceId, event }) => ({
+      id: event.id,
+      type: event.type,
+      sourceId,
+      occurredAt: event.occurredAt,
+      ...(event.subject !== undefined ? { subject: event.subject } : {}),
+      data: event.data,
+    })),
+  });
+  assertScope(scope);
+  if (signal.aborted) throw new Error('Routine cancelled');
+  if (gate && gate.action !== 'allow') {
+    log.info('routine stopped by plugin control point', {
+      routineId: routine.id, ghostId: gate.ghostId, action: gate.action, failure: gate.failure,
+    });
+    if (gate.action === 'skip') return { skipped: true };
+    throw new Error(controlPointStopMessage(gate));
   }
   const root = ownerScopedUserDataPath();
   const imported = await getRoutineHost().prepareImportedAutomation?.(root, routine, run.id, signal, () => assertScope(scope));

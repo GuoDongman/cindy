@@ -270,6 +270,31 @@ it('turns a legacy built-in todo check into an editable routine, keeping its cho
   expect((await routineTools.list('bot'))[0]).toMatchObject({ name: '每天查待办', prompt: 'Edited after upgrade' });
 });
 
+// Rule (control points, 2026-10-31): a plugin skip/stop at will-routine-run must happen before the
+// lane task is created or the model is called. Existing cases cover only shell pre-run hooks.
+it('lets a plugin control point skip or stop a routine before any lane or model dispatch', async () => {
+  const screenControlPoint = vi.fn()
+    .mockResolvedValueOnce({ action: 'skip', ghostId: 'jev', ghostName: 'Jev', reason: 'nothing new', failure: false })
+    .mockResolvedValueOnce({ action: 'block', ghostId: 'jev', ghostName: 'Jev', reason: 'off hours', failure: false });
+  configureRoutineHost({
+    getBot: mock.getBot, ensureRoutineSession: mock.ensureRoutineSession, getScheduler: () => mock.scheduler,
+    getScheduleStorage: () => mock.storage, screenControlPoint,
+  });
+  const routine = await routineTools.save('bot', { name: 'Review', prompt: 'Check', enabled: true,
+    triggers: [{ id: 'tick', kind: 'interval', intervalMs: 60000 }] });
+  await routineTools.runNow('bot', routine.id);
+  await vi.waitFor(async () => expect((await routineTools.history('bot', routine.id))[0]?.status).toBe('skipped'));
+  expect(screenControlPoint).toHaveBeenCalledWith('will-routine-run', expect.objectContaining({
+    routineId: routine.id, botId: 'bot', name: 'Review', prompt: 'Check', builtin: null, events: [],
+  }));
+  await routineTools.runNow('bot', routine.id);
+  await vi.waitFor(async () => expect((await routineTools.history('bot', routine.id))[0]).toMatchObject({
+    status: 'failed', error: expect.stringContaining('off hours'),
+  }));
+  expect(mock.ensureRoutineSession).not.toHaveBeenCalled();
+  expect(mock.scheduler.runNow).not.toHaveBeenCalled();
+});
+
 it('skips a demoted teammate\'s routine while its home is another computer, keeping the rule', async () => {
   companionHomes.update({ enabled: true, selfDeviceId: 'desk', humanActorId: 'human', demotedBotIds: ['bot'],
     actors: [{ id: 'actor', externalId: 'bot', name: 'Bot', avatar: null, homeDeviceId: 'laptop' }] });

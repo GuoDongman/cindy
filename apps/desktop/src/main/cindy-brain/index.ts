@@ -429,7 +429,19 @@ import {
   readLegacyEncryptedValue,
   type LegacyMigrationRead,
 } from './legacyMigrationRead.js';
-import { GHOST_SCHEME, ghostExternalLinkUrls } from '../../shared/ghost.js';
+import {
+  GHOST_CONTROL_POINT_IDS,
+  GHOST_CONTROL_POINTS,
+  GHOST_SCHEME,
+  ghostControlPointActive,
+  ghostExternalLinkUrls,
+  isGhostControlPointId,
+  type GhostControlPointData,
+  type GhostControlPointId,
+  type GhostControlPointInfo,
+  type GhostControlPointFailureAction,
+  type GhostControlPointResult,
+} from '../../shared/ghost.js';
 import { GhostPipeDispatcher } from './pipeDispatcher.js';
 import { GhostCardService, parseCardHeightReport } from './cardService.js';
 import { MailCardService } from './mailCards.js';
@@ -503,6 +515,7 @@ import {
   abortAllGhostInstallConsentPrompts,
   assertGhostInstallConsent,
   confirmedTaskCapability,
+  confirmedControlPoints,
   confirmedUiCapability,
   obtainGhostInstallConsent,
   type GhostInstallConsentDecision,
@@ -650,6 +663,11 @@ import { isKnownEmbeddingModel } from '@cindy/embedding-client';
 import { resolveOneshotCatalogModel } from '../utility-model/textOneshotPinOptions.js';
 import { hasOneshotProviderCredential } from '../utility-model/oneshotProviderUsability.js';
 import { readGhostCindyInflightLimit, relocateGhostCindyPrefs } from './cindyPrefsStore.js';
+import {
+  readControlPointFailureAction,
+  relocateControlPointPrefs,
+  writeControlPointFailureAction,
+} from './controlPointPrefsStore.js';
 import { createGhostComposerListHandler } from './ghostComposerIpc.js';
 import { createGhostDisplayListHandler } from './ghostDisplayListIpc.js';
 import { GHOST_COMPOSER_LIST_CHANNEL } from '../../shared/ghostComposer.js';
@@ -1642,6 +1660,7 @@ async function relocateGhostUserData(
       },
       workdirPreferences: relocateGhostWorkdirPrefs,
       cindyPreferences: relocateGhostCindyPrefs,
+      controlPointPreferences: relocateControlPointPrefs,
       errandPreferences: relocateGhostErrandPrefs,
       pickedDirectories: relocateGhostPickedDirs,
       media: ledger.relocateGhostMediaRefs,
@@ -2937,6 +2956,46 @@ export async function screenGhostUserMessage(
     });
     return { action: 'allow' };
   }
+}
+
+/**
+ * 控制节点询问(定时任务、例行任务等 Host 流程在关键节点调用)。没有插件在该节点生效时
+ * 零开销直接放行；插件出错按用户的出错处理设置。owner 在询问期间切换时按放行收口，
+ * 调用方的流程自己也会因 owner 失效而中止。
+ */
+export async function screenGhostControlPoint(
+  point: GhostControlPointId,
+  data: GhostControlPointData,
+): Promise<GhostControlPointResult> {
+  const ownerStamp = getGhostOwnerPushStamp();
+  try {
+    if (!availableGhosts().some((ghost) => ghostControlPointActive(ghost, point))) return { action: 'allow' };
+    const result = await getGhostSubscriptionGateway().screenControlPoint(point, data, (ghostId) =>
+      readControlPointFailureAction(ghostId, point));
+    return isGhostOwnerStampCurrent(ownerStamp) ? result : { action: 'allow' };
+  } catch (err) {
+    log.warn('ghost control point screen failed', {
+      point,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { action: 'allow' };
+  }
+}
+
+/** 某插件看到的控制节点目录(只读；不含其它插件信息)。 */
+export function ghostControlPointInfo(ghostId: string): GhostControlPointInfo[] {
+  const ghost = findInstalledGhostByInstanceId(availableGhosts(), ghostId);
+  // 出错处理按存储身份保存，与网关询问时读取的 key 一致。
+  const prefsKey = ghost ? installedGhostStoragePart(ghost) : ghostId;
+  const declared = new Set(ghost?.manifest.subscribe?.hooks ?? []);
+  return GHOST_CONTROL_POINT_IDS.map((point) => ({
+    id: point,
+    actions: GHOST_CONTROL_POINTS[point].actions,
+    timeoutMs: GHOST_CONTROL_POINTS[point].timeoutMs,
+    declared: declared.has(point),
+    active: ghost ? ghostControlPointActive(ghost, point) : false,
+    onFailure: readControlPointFailureAction(prefsKey, point),
+  }));
 }
 
 /** 被拦通知广播(register.ts 的 onUserMessageBlocked 依赖真身)。
@@ -7261,6 +7320,7 @@ async function installAndDockLocked(
     targetCapabilityApproved: confirmedTaskCapability(opts.consent.decision, installedBefore, opts.consent.manifest, 'targets'),
     uiCapabilityApproved: confirmedUiCapability(opts.consent.decision, installedBefore, opts.consent.manifest),
     delegationCapabilityApproved: confirmedTaskCapability(opts.consent.decision, installedBefore, opts.consent.manifest, 'delegation'),
+    approvedControlPoints: confirmedControlPoints(opts.consent.decision, installedBefore, opts.consent.manifest),
     initiallyEnabled: opts.enable ?? false,
     expectedPackageSha256: opts.expectedPackageSha256,
     ...(opts.trustOverride ? { trustOverride: opts.trustOverride } : {}),
@@ -7448,6 +7508,7 @@ async function updateLocalGhostPackageLocked(
           targetCapabilityApproved: confirmedTaskCapability(consent, previousGhost, inspected.manifest, 'targets'),
           uiCapabilityApproved: confirmedUiCapability(consent, previousGhost, inspected.manifest),
           delegationCapabilityApproved: confirmedTaskCapability(consent, previousGhost, inspected.manifest, 'delegation'),
+          approvedControlPoints: confirmedControlPoints(consent, previousGhost, inspected.manifest),
           expectedPackageSha256,
           expectedInstalledApproval,
           installOrigin: installOrigin ?? 'manual',
@@ -7946,6 +8007,7 @@ async function installOrUpdateMarketGhostPackageLocked(
           targetCapabilityApproved: confirmedTaskCapability(expected.consent, installed, inspected.manifest, 'targets'),
           uiCapabilityApproved: confirmedUiCapability(expected.consent, installed, inspected.manifest),
           delegationCapabilityApproved: confirmedTaskCapability(expected.consent, installed, inspected.manifest, 'delegation'),
+          approvedControlPoints: confirmedControlPoints(expected.consent, installed, inspected.manifest),
           expectedPackageSha256: inspected.packageSha256,
           expectedInstalledApproval: expected.expectedInstalledApproval!,
           ...(previousRelId ? { simulatorPreviousRelId: previousRelId } : {}),
@@ -9115,6 +9177,7 @@ export function registerGhostIpc(): void {
     if (type === 'host-request') {
       const kind = (payload as { kind?: unknown } | null)?.kind;
       if (kind === 'app-context') return currentGhostAppContext();
+      if (kind === 'control-points') return { ok: true, points: ghostControlPointInfo(id) };
       if (kind === 'cindy-preference') {
         return getGhostConfiguredMediaModel(
           id,
@@ -10166,6 +10229,30 @@ export function registerGhostIpc(): void {
       deferPluginUiPrompt(id, ghost.manifest.version);
       broadcastGhostsChanged(getGhostManager().list(), false, { projectionOnly: true });
     }
+  });
+
+  // 详情页「拦截点」：只列本插件声明的节点；出错处理由用户设置，插件只读。
+  ipcMain.handle('ghosts:control-points:get', (event, id: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    if (typeof id !== 'string' || !id.trim()) throwIpcError('INVALID_PARAMS', 'id must be a non-empty string');
+    requireGhostAvailableForActiveSession(id);
+    return ghostControlPointInfo(id).filter((point) => point.declared).map((point) => ({
+      ...point,
+      failureActions: GHOST_CONTROL_POINTS[point.id].failureActions,
+    }));
+  });
+
+  ipcMain.handle('ghosts:control-points:set-failure', (event, id: unknown, point: unknown, action: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    if (typeof id !== 'string' || !id.trim()) throwIpcError('INVALID_PARAMS', 'id must be a non-empty string');
+    if (!isGhostControlPointId(point)) throwIpcError('INVALID_PARAMS', 'unknown control point');
+    if (action !== null && !(GHOST_CONTROL_POINTS[point].failureActions as readonly unknown[]).includes(action)) {
+      throwIpcError('INVALID_PARAMS', 'unsupported failure action');
+    }
+    requireGhostAvailableForActiveSession(id);
+    const ghost = findInstalledGhostByInstanceId(availableGhosts(), id);
+    if (!ghost) throwIpcError('NOT_FOUND', 'plugin is not installed');
+    writeControlPointFailureAction(installedGhostStoragePart(ghost), point, action as GhostControlPointFailureAction | null);
   });
 
   ipcMain.handle('ghosts:request-task-approval', async (event, id: unknown) => {

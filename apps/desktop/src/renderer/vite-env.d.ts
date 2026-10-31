@@ -1390,6 +1390,8 @@ interface ElectronAPI {
     deferUiPrompt: (id: string, version: string) => Promise<void>;
     requestUiApproval: (id: string) => Promise<{ granted: boolean }>;
     requestTaskApproval: (id: string) => Promise<{ granted: boolean }>;
+    getControlPoints: (id: string) => Promise<import('../shared/ghost').GhostControlPointSetting[]>;
+    setControlPointFailure: (id: string, point: string, action: 'allow' | 'skip' | 'block' | null) => Promise<void>;
     /** 详情页「后台任务」:本插件转入后台(hidden)且未删除的任务。 */
     listBackgroundTasks: (id: string) => Promise<{
       items: Array<{ taskId: string; title: string; status: 'active' | 'archived'; updatedAt: number; running: boolean }>;

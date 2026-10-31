@@ -7594,6 +7594,22 @@
         "unknownPublisher": "Editor desconocido",
         "unknownReviewerDetail": "El paquete declara tener una revisión, pero esta versión de Cindy no reconoce la clave del revisor, por lo que no se muestra como revisado."
       },
+      "controlPoints": {
+        "title": "Comprobaciones previas",
+        "description": "En los momentos siguientes, Cindy consulta primero a este complemento. Solo puede omitir o detener una ejecución, nunca aprobarla en tu nombre.",
+        "points": {
+          "will-schedule-run": "Antes de ejecutar una automatización",
+          "will-routine-run": "Antes de ejecutar una rutina de un compañero"
+        },
+        "inactive": "Aún no está activo. Se activará cuando lo confirmes al actualizar o reinstalar este complemento.",
+        "onFailureLabel": "Si el complemento no responde a tiempo",
+        "onFailure": {
+          "allow": "Ejecutar como siempre",
+          "skip": "Omitir esta ejecución",
+          "block": "Detener y marcar como fallida"
+        },
+        "saveFailed": "No se pudo guardar. Inténtalo de nuevo."
+      },
       "perm": {
         "mail": "Utilice borradores de correo y envíe tarjetas.",
         "mailDetail": "Edite y sincronice borradores en una tarjeta, con confirmación y una cuenta atrás para deshacer antes de enviarlos.",
@@ -7660,6 +7676,10 @@
         "subscribeHooksDetail": "Revisa cada mensaje antes de enviarlo: puede bloquearlo o reescribir el texto antes de que se envíe; Los mensajes bloqueados se pueden editar y reenviar.",
         "subscribeAssistantReply": "Puede leer y reescribir las respuestas de la IA.",
         "subscribeAssistantReplyDetail": "Procesa cada respuesta de IA una vez completada: puede pulir o reescribir el texto (reemplazándolo directamente, sin conservar el original), o reemplazar la burbuja de respuesta con su propia tarjeta renderizada (en ese caso, el texto original se conserva y se puede ver con un toque).",
+        "subscribeScheduleRun": "Puede decidir si se ejecuta una automatización",
+        "subscribeScheduleRunDetail": "Se le consulta antes de cada ejecución de una automatización. Puede ver su nombre e instrucciones y omitir o detener esa ejecución, pero no puede aprobar nada en tu nombre.",
+        "subscribeRoutineRun": "Puede decidir si se ejecuta una rutina de un compañero",
+        "subscribeRoutineRunDetail": "Se le consulta cada vez que se activa una rutina. Puede ver las instrucciones de la rutina y el evento que la activó, y omitir o detener esa ejecución, pero no puede aprobar nada en tu nombre.",
         "card": "Representa tarjetas de mensajes",
         "cardExternalLink": "Las tarjetas pueden declarar enlaces externos que abren su navegador después de la confirmación.",
         "cardExternalLinkDetail": "Al hacer clic en el enlace de una tarjeta se muestra un cuadro de diálogo de confirmación; El URL se abre en el navegador de su sistema solo después de su aprobación. Sólo se permiten direcciones http/https.",

@@ -7484,6 +7484,22 @@
         "unknownPublisher": "未知釋出者",
         "unknownReviewerDetail": "包裡帶有稽核宣告，但當前 Cindy 不認識這把稽核公鑰，因此不會顯示為已稽核。"
       },
+      "controlPoints": {
+        "title": "執行前檢查",
+        "description": "到了下面這些時機，Cindy 會先問這個插件。它只能讓這次略過或攔下，不能替你放行。",
+        "points": {
+          "will-schedule-run": "自動化執行前",
+          "will-routine-run": "夥伴的例行任務執行前"
+        },
+        "inactive": "尚未生效：更新或重新安裝這個插件時確認後才會生效。",
+        "onFailureLabel": "插件沒有及時回應時",
+        "onFailure": {
+          "allow": "照常執行",
+          "skip": "略過這次",
+          "block": "攔下並記為失敗"
+        },
+        "saveFailed": "無法儲存，請再試一次。"
+      },
       "perm": {
         "mail": "使用郵件草稿與傳送卡片",
         "mailDetail": "可在卡片中編輯和同步草稿，並在傳送前提供確認與撤銷倒數。",
@@ -7550,6 +7566,10 @@
         "subscribeHooksDetail": "傳送前先經它審閱：可攔下訊息，也可能改寫正文後再發出；被攔的訊息可編輯後重發。",
         "subscribeAssistantReply": "可讀取並重寫 AI 的回覆",
         "subscribeAssistantReplyDetail": "AI 每輪迴復完成後先經它處理：可潤色改寫正文(直接替換，不留原文)，或用自繪卡片替換回復氣泡(卡片替換時原文保留，可一鍵檢視)。",
+        "subscribeScheduleRun": "可在自動化執行前決定是否執行",
+        "subscribeScheduleRunDetail": "每次自動化執行前會先問它。它看得到這條自動化的名稱和指令，可以讓這次略過或攔下，但不能替你放行。",
+        "subscribeRoutineRun": "可在夥伴的例行任務執行前決定是否執行",
+        "subscribeRoutineRunDetail": "例行任務每次被觸發後會先問它。它看得到例行任務的指令和觸發它的事件內容，可以讓這次略過或攔下，但不能替你放行。",
         "card": "渲染訊息卡片",
         "cardExternalLink": "卡片內可宣告外鏈，經你確認後開啟瀏覽器",
         "cardExternalLinkDetail": "卡片中的連結點選後會彈出確認框，你同意後才會在系統瀏覽器中開啟；僅限 http/https 地址。",

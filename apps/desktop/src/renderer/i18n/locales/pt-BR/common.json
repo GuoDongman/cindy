@@ -7594,6 +7594,22 @@
         "unknownPublisher": "Publicador desconhecido",
         "unknownReviewerDetail": "O pacote declara ter uma revisão, mas esta versão do Cindy não reconhece a chave do revisor, por isso ele não é exibido como revisado."
       },
+      "controlPoints": {
+        "title": "Verificações antes da execução",
+        "description": "Nos momentos abaixo, o Cindy consulta este plugin primeiro. Ele só pode pular ou interromper uma execução, nunca aprová-la em seu nome.",
+        "points": {
+          "will-schedule-run": "Antes de executar uma automação",
+          "will-routine-run": "Antes de executar uma rotina de um colega"
+        },
+        "inactive": "Ainda não está ativo. Passa a valer depois que você confirmar ao atualizar ou reinstalar este plugin.",
+        "onFailureLabel": "Se o plugin não responder a tempo",
+        "onFailure": {
+          "allow": "Executar normalmente",
+          "skip": "Pular esta execução",
+          "block": "Interromper e marcar como falha"
+        },
+        "saveFailed": "Não foi possível salvar. Tente novamente."
+      },
       "perm": {
         "mail": "Usar rascunhos de e-mail e cartões de envio",
         "mailDetail": "Edite e sincronize rascunhos em um cartão, com confirmação e contagem regressiva para desfazer antes do envio.",
@@ -7660,6 +7676,10 @@
         "subscribeHooksDetail": "Revisa cada mensagem antes do envio: pode bloqueá-la ou reescrever o texto antes que seja enviado; mensagens bloqueadas podem ser editadas e reenviadas.",
         "subscribeAssistantReply": "Pode ler e reescrever as respostas da IA",
         "subscribeAssistantReplyDetail": "Processa cada resposta da IA após sua conclusão: pode aprimorar ou reescrever o texto (substituindo-o diretamente, sem manter o original) ou substituir o balão de resposta por seu próprio cartão renderizado (nesse caso, o texto original é mantido e pode ser visto com um toque).",
+        "subscribeScheduleRun": "Pode decidir se uma automação é executada",
+        "subscribeScheduleRunDetail": "É consultado antes de cada execução de uma automação. Vê o nome e as instruções e pode pular ou interromper essa execução, mas não pode aprovar nada em seu nome.",
+        "subscribeRoutineRun": "Pode decidir se uma rotina de um colega é executada",
+        "subscribeRoutineRunDetail": "É consultado sempre que uma rotina é acionada. Vê as instruções da rotina e o evento que a acionou e pode pular ou interromper essa execução, mas não pode aprovar nada em seu nome.",
         "card": "Renderiza cartões de mensagens",
         "cardExternalLink": "Os cartões podem declarar links externos que abrem seu navegador após confirmação",
         "cardExternalLinkDetail": "Clicar em um link de cartão exibe uma caixa de diálogo de confirmação; a URL só abre no navegador do sistema após sua aprovação. Apenas endereços http/https são permitidos.",

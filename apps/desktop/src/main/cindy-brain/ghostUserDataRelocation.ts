@@ -16,6 +16,7 @@ const USER_DATA_REFERENCES = [
   'libraryMeta',
   'workdirPreferences',
   'cindyPreferences',
+  'controlPointPreferences',
   'errandPreferences',
   'pickedDirectories',
   'media',
