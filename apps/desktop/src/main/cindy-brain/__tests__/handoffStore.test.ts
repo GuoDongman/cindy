@@ -46,12 +46,12 @@ describe('GhostHandoffStore', () => {
     const [kept] = await s.import('art', [{ name: 'kept.csv', bytes: bytes('1') }], () => {});
     const staging = path.join(root, 'art', '.tmp', '11111111-1111-4111-8111-111111111111');
     fs.mkdirSync(staging, { recursive: true });
-    fs.writeFileSync(path.join(staging, 'blob'), 'partial');
+    fs.writeFileSync(path.join(staging, 'kept.csv'), 'partial');
     const old = new Date(now.value - 2 * 60 * 60_000);
     fs.utimesSync(staging, old, old);
     const metaless = path.join(root, 'art', '22222222-2222-4222-8222-222222222222');
     fs.mkdirSync(metaless);
-    fs.writeFileSync(path.join(metaless, 'blob'), 'orphan');
+    fs.writeFileSync(path.join(metaless, 'orphan.csv'), 'orphan');
 
     await s.sweep();
 
@@ -69,6 +69,30 @@ describe('GhostHandoffStore', () => {
     })).rejects.toThrow('authorization changed');
     expect(fs.readdirSync(path.join(root, 'art', '.tmp'))).toEqual([]);
     expect(await s.list('art')).toEqual([]);
+  });
+
+  // Finder / Explorer show the user's file name; the name on disk must still be
+  // creatable on macOS and Windows. The original name stays in the list.
+  it('stores each copy under a readable portable name next to hidden metadata', async () => {
+    const { root, store: s } = store({ value: Date.now() });
+    const long = '季度销售数据汇总'.repeat(10) + '.xlsx';
+    const names = [long, 'CON.csv', 'report..', '???.csv', 'a:b.tsv'];
+    const files = await s.import('art', names.map((name) => ({ name, bytes: bytes(name) })), () => {});
+    const onDisk = files.map((file) => {
+      const dir = path.join(root, 'art', file.ref.slice('handoff:'.length));
+      return fs.readdirSync(dir).filter((entry) => entry !== '.cindy-handoff.json');
+    });
+
+    expect(onDisk).toEqual([
+      ['季度销售数据汇总'.repeat(10).slice(0, 59) + '.xlsx'],
+      ['_CON.csv'], ['report'], ['file.csv'], ['ab.tsv'],
+    ]);
+    expect(files.map((file) => file.name)).toEqual(names);
+    const opened = await s.open('art', files[0]!.ref);
+    expect(await opened!.file.readFile({ encoding: 'utf8' })).toBe(long);
+    await opened!.file.close();
+    expect(await s.folder('art')).toBe(path.join(root, 'art'));
+    expect(await s.folder('other')).toBeNull();
   });
 
   // Isolation: a reference is meaningful only inside the instance it was handed to.

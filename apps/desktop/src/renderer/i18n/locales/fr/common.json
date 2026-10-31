@@ -7856,6 +7856,8 @@
         "empty": "Aucun fichier n'a encore été transmis à ce plugin dans une conversation.",
         "loadFailed": "Impossible de charger la liste des fichiers. Réessayez plus tard.",
         "refresh": "Actualiser",
+        "openInFinder": "Ouvrir dans le Finder",
+        "openInExplorer": "Ouvrir dans l'Explorateur de fichiers",
         "meta": "{{size}} · Transmis le {{handedAt}} · Supprimé automatiquement le {{expiresAt}}",
         "delete": "Supprimer",
         "deleteNamed": "Supprimer {{name}}",

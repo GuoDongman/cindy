@@ -1608,6 +1608,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('ghosts:library-overview', id),
     handoffList: (id: string): Promise<import('../shared/ghost').GhostHandoffFile[]> =>
       ipcRenderer.invoke('ghosts:handoff-list', id),
+    handoffFolder: (id: string): Promise<string | null> => ipcRenderer.invoke('ghosts:handoff-folder', id),
     handoffDelete: (id: string, ref: string): Promise<{ existed: boolean }> =>
       ipcRenderer.invoke('ghosts:handoff-delete', id, ref),
     libraryPickLocation: (

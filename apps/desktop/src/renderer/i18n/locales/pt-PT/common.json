@@ -7856,6 +7856,8 @@
         "empty": "Ainda não foram entregues ficheiros a este plugin numa conversa.",
         "loadFailed": "Não foi possível carregar a lista de ficheiros. Tente novamente mais tarde.",
         "refresh": "Atualizar",
+        "openInFinder": "Abrir no Finder",
+        "openInExplorer": "Abrir no Explorador de Ficheiros",
         "meta": "{{size}} · Entregue em {{handedAt}} · Eliminado automaticamente em {{expiresAt}}",
         "delete": "Eliminar",
         "deleteNamed": "Eliminar {{name}}",

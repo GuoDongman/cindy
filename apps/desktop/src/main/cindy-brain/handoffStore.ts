@@ -13,7 +13,8 @@ import { mediaTypeForLibraryPath } from './runtime/ghostFiles.js';
 
 /**
  * Host-owned copies of chat files handed to a plugin (`handoff:<uuid>`).
- * Layout: `<root>/<instance>/<uuid>/{blob,meta.json}`. Writes land in
+ * Layout: `<root>/<instance>/<uuid>/{<file name>,.cindy-handoff.json}` so the
+ * folder reads like the user's files in Finder / Explorer. Writes land in
  * `<instance>/.tmp/<uuid>` and become visible by one directory rename, so a
  * crash leaves only `.tmp` leftovers for the next sweep. Copies are transient:
  * an unreadable or expired entry is deleted, never repaired.
@@ -23,6 +24,11 @@ const STALE_TMP_MS = 60 * 60_000;
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const INSTANCE_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
+/** Dot-named so Finder / Explorer hide it by default; disk names never start with a dot. */
+const META = '.cindy-handoff.json';
+const DISK_NAME_CHARS = 64;
+const DISK_NAME_BYTES = 200;
+const WINDOWS_RESERVED_BASENAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const TABLE_MIME: Record<string, string> = {
   '.csv': 'text/csv; charset=utf-8',
   '.tsv': 'text/tab-separated-values; charset=utf-8',
@@ -33,6 +39,8 @@ const TABLE_MIME: Record<string, string> = {
 interface Meta extends Omit<GhostHandoffFile, 'ref'> {
   version: 1;
   id: string;
+  /** Name on disk; `name` stays the user's original name for display. */
+  file: string;
 }
 
 export class GhostHandoffQuotaError extends Error {}
@@ -48,6 +56,27 @@ function displayName(name: string): string {
   return (base || 'file').slice(0, 255);
 }
 
+/**
+ * File name on disk: the display name made creatable everywhere (no reserved
+ * characters, leading dots, trailing dots or spaces, Windows device names),
+ * at most 64 characters with the extension kept when it has to be shortened.
+ */
+export function handoffDiskName(name: string): string {
+  const base = displayName(name);
+  const dot = base.lastIndexOf('.');
+  const hasExt = dot > 0 && base.length - dot <= 16 && !/\s/.test(base.slice(dot));
+  const clean = (part: string) => part.replace(/[<>:"|?*]/g, '');
+  let ext = hasExt ? clean(base.slice(dot)).replace(/[. ]+$/, '') : '';
+  if (ext === '.') ext = '';
+  let stem = clean(hasExt ? base.slice(0, dot) : base).replace(/^[. ]+/, '');
+  const fits = () => [...stem].length + ext.length <= DISK_NAME_CHARS &&
+    Buffer.byteLength(stem + ext) <= DISK_NAME_BYTES;
+  while (!fits()) stem = [...stem].slice(0, -1).join('');
+  stem = stem.replace(/[. ]+$/, '') || 'file';
+  // Checked after shortening: a cut can leave a device name such as `NUL`.
+  return WINDOWS_RESERVED_BASENAME_RE.test(stem + ext) ? `_${stem}${ext}` : stem + ext;
+}
+
 async function fsyncDir(dir: string): Promise<void> {
   // Windows cannot open directories for fsync; the rename itself stays atomic.
   const handle = await fs.open(dir, 'r').catch(() => null);
@@ -56,8 +85,9 @@ async function fsyncDir(dir: string): Promise<void> {
 }
 
 function toFile(meta: Meta): GhostHandoffFile {
-  const { version: _version, id, ...rest } = meta;
+  const { version: _version, id, file: _file, ...rest } = meta;
   void _version;
+  void _file;
   return { ref: `handoff:${id}`, ...rest };
 }
 
@@ -92,7 +122,7 @@ export class GhostHandoffStore {
     try {
       const entry = await fs.lstat(path.join(dir, id));
       if (!entry.isDirectory()) return null;
-      const handle = await fs.open(path.join(dir, id, 'meta.json'), constants.O_RDONLY | NO_FOLLOW);
+      const handle = await fs.open(path.join(dir, id, META), constants.O_RDONLY | NO_FOLLOW);
       let meta: Meta;
       try {
         meta = JSON.parse(await handle.readFile('utf8')) as Meta;
@@ -100,6 +130,7 @@ export class GhostHandoffStore {
         await handle.close();
       }
       const valid = meta?.version === 1 && meta.id === id && typeof meta.name === 'string' &&
+        typeof meta.file === 'string' && meta.file === handoffDiskName(meta.file) &&
         typeof meta.mimeType === 'string' && Number.isSafeInteger(meta.size) && meta.size >= 0 &&
         /^[a-f0-9]{64}$/.test(meta.sha256) && Number.isFinite(meta.createdAt) &&
         Number.isFinite(meta.expiresAt);
@@ -176,6 +207,13 @@ export class GhostHandoffStore {
     return this.holds.has(instance);
   }
 
+  /** Folder the user can open in Finder / Explorer; null until a copy has been stored. */
+  async folder(instance: string): Promise<string | null> {
+    const dir = this.instanceDir(instance);
+    const stat = await fs.lstat(dir).catch(() => null);
+    return stat?.isDirectory() ? dir : null;
+  }
+
   /** The owner root now; callers that clean up later keep it so an account switch cannot redirect them. */
   currentRoot(): string {
     return this.deps.root();
@@ -203,11 +241,11 @@ export class GhostHandoffStore {
           const createdAt = this.now();
           const name = displayName(file.name);
           const meta: Meta = {
-            version: 1, id, name, mimeType: handoffMimeType(name), size: file.bytes.byteLength,
+            version: 1, id, name, file: handoffDiskName(name), mimeType: handoffMimeType(name), size: file.bytes.byteLength,
             sha256: createHash('sha256').update(file.bytes).digest('hex'),
             createdAt, expiresAt: createdAt + GHOST_HANDOFF_TTL_MS,
           };
-          for (const [target, content] of [['blob', file.bytes], ['meta.json', JSON.stringify(meta)]] as const) {
+          for (const [target, content] of [[meta.file, file.bytes], [META, JSON.stringify(meta)]] as const) {
             const handle = await fs.open(path.join(staging, target), 'wx', 0o600);
             try {
               await handle.writeFile(content);
@@ -243,7 +281,7 @@ export class GhostHandoffStore {
       await this.remove(dir, id).catch(() => {});
       return null;
     }
-    const blob = path.join(dir, id, 'blob');
+    const blob = path.join(dir, id, meta.file);
     let file: fs.FileHandle;
     try {
       file = await fs.open(blob, constants.O_RDONLY | NO_FOLLOW);

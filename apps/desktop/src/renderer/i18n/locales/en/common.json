@@ -7790,6 +7790,8 @@
         "empty": "No files have been handed to this plugin in chats yet.",
         "loadFailed": "Couldn't load the file list. Try again later.",
         "refresh": "Refresh",
+        "openInFinder": "Open in Finder",
+        "openInExplorer": "Open in File Explorer",
         "meta": "{{size}} · Handed over {{handedAt}} · Deleted automatically {{expiresAt}}",
         "delete": "Delete",
         "deleteNamed": "Delete {{name}}",

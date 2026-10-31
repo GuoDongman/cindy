@@ -7789,6 +7789,8 @@
         "empty": "In Chats wurden diesem Plugin noch keine Dateien übergeben.",
         "loadFailed": "Die Dateiliste konnte nicht geladen werden. Versuche es später erneut.",
         "refresh": "Aktualisieren",
+        "openInFinder": "Im Finder öffnen",
+        "openInExplorer": "Im Datei-Explorer öffnen",
         "meta": "{{size}} · Übergeben am {{handedAt}} · Automatisch gelöscht am {{expiresAt}}",
         "delete": "Löschen",
         "deleteNamed": "{{name}} löschen",

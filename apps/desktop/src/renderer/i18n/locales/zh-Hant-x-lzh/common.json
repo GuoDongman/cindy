@@ -7746,6 +7746,8 @@
         "empty": "對話中尚未交卷予此法器。",
         "loadFailed": "卷之列表讀取未成，請稍後再試。",
         "refresh": "重整",
+        "openInFinder": "於 Finder 中啟之",
+        "openInExplorer": "於檔案總管中啟之",
         "meta": "{{size}} · 交於 {{handedAt}} · {{expiresAt}} 自刪",
         "delete": "刪",
         "deleteNamed": "刪 {{name}}",

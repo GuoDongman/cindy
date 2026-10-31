@@ -7856,6 +7856,8 @@
         "empty": "Aún no se ha entregado ningún archivo a este complemento en una conversación.",
         "loadFailed": "No se pudo cargar la lista de archivos. Inténtalo más tarde.",
         "refresh": "Actualizar",
+        "openInFinder": "Abrir en Finder",
+        "openInExplorer": "Abrir en el Explorador de archivos",
         "meta": "{{size}} · Entregado el {{handedAt}} · Se elimina automáticamente el {{expiresAt}}",
         "delete": "Eliminar",
         "deleteNamed": "Eliminar {{name}}",

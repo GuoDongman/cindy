@@ -1304,7 +1304,7 @@ it('deletes one handed-over file only after confirmation', async () => {
   const [first, second] = [file('first.csv', 1), file('second.csv', 2)];
   const handoffList = vi.fn().mockResolvedValueOnce([first, second]).mockResolvedValue([second]);
   const handoffDelete = vi.fn(async () => ({ existed: true }));
-  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete } });
+  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete, handoffFolder: vi.fn(async () => null) } });
   render(<ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>);
 
   const row = (await screen.findByText('first.csv')).closest('li') as HTMLElement;
@@ -1326,7 +1326,7 @@ it('reloads handed-over files when the data owner changes', async () => {
   const { GhostHandoffFilesSection } = await import('../GhostHandoffFilesSection');
   const file = (name: string) => ({ ref: 'handoff:00000000-0000-4000-8000-000000000009', name, mimeType: 'text/csv', size: 1, sha256: 'a'.repeat(64), createdAt: 1, expiresAt: 2 });
   const handoffList = vi.fn().mockResolvedValueOnce([file('owner-a.csv')]).mockResolvedValue([file('owner-b.csv')]);
-  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete: vi.fn() } });
+  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete: vi.fn(), handoffFolder: vi.fn(async () => null) } });
   const view = (
     <ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>
   );
@@ -1337,4 +1337,28 @@ it('reloads handed-over files when the data owner changes', async () => {
   rerender(<ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>);
   await screen.findByText('owner-b.csv');
   expect(screen.queryByText('owner-a.csv')).toBeNull();
+});
+
+// The user can see the copies in Finder / Explorer; with nothing handed over the
+// folder button stays unavailable. Tier: renderer unit through the real section.
+it('opens the instance handoff folder only once a copy exists', async () => {
+  const { ConfirmDialogProvider } = await import('@/components/ui/confirm-dialog-provider');
+  const { GhostHandoffFilesSection } = await import('../GhostHandoffFilesSection');
+  const copy = { ref: 'handoff:00000000-0000-4000-8000-000000000003', name: 'sales.csv', mimeType: 'text/csv', size: 1, sha256: 'a'.repeat(64), createdAt: 1, expiresAt: 2 };
+  const handoffList = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([copy]);
+  const handoffFolder = vi.fn(async () => '/data/ghost-handoff/art');
+  const openPath = vi.fn().mockResolvedValue({ success: true });
+  Object.assign(window.electronAPI, { openPath, ghosts: { handoffList, handoffDelete: vi.fn(), handoffFolder } });
+  render(<ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>);
+
+  await screen.findByText('settings.ghosts.handoff.empty');
+  const open = screen.getByRole('button', { name: /settings\.ghosts\.handoff\.openIn/ });
+  expect(open).toHaveProperty('disabled', true);
+
+  fireEvent.click(screen.getByRole('button', { name: 'settings.ghosts.handoff.refresh' }));
+  await screen.findByText('sales.csv');
+  expect(open).toHaveProperty('disabled', false);
+  fireEvent.click(open);
+  expect(openPath).toHaveBeenCalledExactlyOnceWith('/data/ghost-handoff/art');
+  expect(handoffFolder).toHaveBeenCalledWith('art');
 });

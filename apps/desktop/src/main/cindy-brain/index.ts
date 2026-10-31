@@ -10265,6 +10265,10 @@ export function registerGhostIpc(): void {
     assertTrustedAppRendererEvent(event);
     return getGhostHandoffStore().list(handoffStorageKey(id));
   });
+  ipcMain.handle('ghosts:handoff-folder', async (event, id: unknown) => {
+    assertTrustedAppRendererEvent(event);
+    return getGhostHandoffStore().folder(handoffStorageKey(id));
+  });
   ipcMain.handle('ghosts:handoff-delete', async (event, id: unknown, ref: unknown) => {
     assertTrustedAppRendererEvent(event);
     const key = handoffStorageKey(id);

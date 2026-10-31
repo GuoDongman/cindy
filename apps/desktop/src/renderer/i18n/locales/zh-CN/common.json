@@ -7747,6 +7747,8 @@
         "empty": "还没有在对话中交给该插件的文件。",
         "loadFailed": "无法读取文件列表，请稍后重试。",
         "refresh": "刷新",
+        "openInFinder": "在访达中打开",
+        "openInExplorer": "在资源管理器中打开",
         "meta": "{{size}} · 交出于 {{handedAt}} · {{expiresAt}} 自动删除",
         "delete": "删除",
         "deleteNamed": "删除 {{name}}",

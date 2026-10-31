@@ -7747,6 +7747,8 @@
         "empty": "대화에서 이 플러그인에 넘긴 파일이 아직 없습니다.",
         "loadFailed": "파일 목록을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
         "refresh": "새로고침",
+        "openInFinder": "Finder에서 열기",
+        "openInExplorer": "파일 탐색기에서 열기",
         "meta": "{{size}} · {{handedAt}}에 넘김 · {{expiresAt}}에 자동 삭제",
         "delete": "삭제",
         "deleteNamed": "{{name}} 삭제",
