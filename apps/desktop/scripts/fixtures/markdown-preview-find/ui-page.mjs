@@ -4,7 +4,7 @@ export default {
   name: 'markdown-preview-find',
   entry: './markdown-preview-find-fixture.tsx',
   viewport: { width: 1040, height: 760 },
-  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView and shortcut ownership',
+  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar and shortcut ownership',
   notCovered: 'Installed release, native menus, PDF/draw.io viewing and IPC file loading; benign file data is supplied by the fixture',
   stubs: {
     'src/renderer/features/cc-agent/workdir-browse/PdfPreview':
@@ -20,13 +20,19 @@ export default {
     'focus-restore': { about: 'Closing find restores the document toolbar opener for keyboard navigation' },
     'ime-escape': { about: 'An IME-cancelling Escape and its repeats keep search open until a new press' },
     'outside-focus': { about: 'Escape closes find first even after Tab reaches the backdrop or covered page' },
+    'background-project-search': { about: 'The covered project-search sidebar retains its mode and query until the document closes' },
   },
   async check(page, ui) {
     const findKey = ui.platform === 'darwin' ? 'Meta+f' : 'Control+f';
     // Keep a search open behind the preview to exercise retargeting and the
     // editor capture listener that used to consume the same shortcut first.
     const editor = ['background-editor', 'loading-editor'].includes(ui.case);
-    if (ui.case !== 'focus-restore') {
+    const projectSearch = ui.case === 'background-project-search';
+    const projectInput = page.locator('input[data-workdir-search-input]');
+    if (projectSearch) {
+      await page.getByRole('button', { name: await ui.t('ccAgent.workdirBrowse.searchPanel.searchFiles'), exact: true }).click();
+      await projectInput.fill('needle');
+    } else if (ui.case !== 'focus-restore') {
       await page.keyboard.press(findKey);
       if (editor) await page.locator('[data-doc-search-bar]').waitFor();
       else await page.getByRole('searchbox').waitFor();
@@ -139,6 +145,10 @@ export default {
     assert.equal(await page.locator('[data-text-lightbox-overlay]').evaluate(el => getComputedStyle(el).opacity), '1');
     assert.equal(await card.isVisible(), true);
     assert.equal(await page.evaluate(() => CSS.highlights.has('cindy-find-in-page-match')), false);
+    if (projectSearch) {
+      assert.equal(await projectInput.isVisible(), true);
+      assert.equal(await projectInput.inputValue(), 'needle');
+    }
     if (ui.case === 'focus-restore') {
       assert.equal(await opener.evaluate(el => document.activeElement === el), true);
       // A toolbar tooltip owns its own Escape before the document. Reopen it
@@ -156,6 +166,12 @@ export default {
     await page.locator('[role="tooltip"]').waitFor({ state: 'detached' });
     await page.keyboard.press('Escape');
     await card.waitFor({ state: 'detached' });
+    if (projectSearch) {
+      assert.equal(await projectInput.isVisible(), true);
+      assert.equal(await projectInput.inputValue(), 'needle');
+      await page.keyboard.press('Escape');
+      await projectInput.waitFor({ state: 'hidden' });
+    }
     await page.keyboard.press(findKey);
     if (editor) await page.locator('[data-doc-search-bar] input').fill('苹果');
     else await page.getByRole('searchbox').fill('苹果');
