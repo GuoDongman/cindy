@@ -172,8 +172,10 @@ function run(cmd, args, opts = {}) {
 function buildIpa(env, region) {
   // 签名参数(非机密描述符)由 region JSON 提供,构建时强制解析。
   const sign = resolveIosSigningEnv(region);
-  run(NPX, ['--yes', 'expo', 'prebuild', '--platform', 'ios', '--clean'], { env });
-  run(NPX, ['--yes', 'pod-install'], { env: withUserGemPodOnPath({ env }) });
+  // prebuild 自己也可能调用 pod,两步都要用补全后的 PATH。
+  const podEnv = withUserGemPodOnPath({ env });
+  run(NPX, ['--yes', 'expo', 'prebuild', '--platform', 'ios', '--clean'], { env: podEnv });
+  run(NPX, ['--yes', 'pod-install'], { env: podEnv });
 
   const ws = findWorkspace();
   if (!ws) throw new Error('prebuild 后未找到 ios/*.xcworkspace');

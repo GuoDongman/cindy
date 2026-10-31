@@ -1,6 +1,6 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { Writable } from 'node:stream';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line import/no-relative-packages -- dev 脚本模块,不在 src 下
@@ -89,13 +89,16 @@ posixOnly('sim-pod-install bounded runner', () => {
 describe('withUserGemPodOnPath', () => {
   const missing = () => { throw Object.assign(new Error('spawn pod ENOENT'), { code: 'ENOENT' }); };
   const env = { PATH: '/usr/bin' } as unknown as NodeJS.ProcessEnv;
+  // 实现用宿主平台的 join/delimiter,测试输入与预期也用同一套,Windows CI 才不会因分隔符失败。
+  const gemDir = join('/home/test', '.gem', 'ruby', '2.6.0');
+  const gemBin = join(gemDir, 'bin');
 
   // Regression 2026-11-01: a working user-gem CocoaPods was reported as pod=missing
   // because the Agent PATH omits Gem.user_dir/bin, and tasks asked to install Homebrew.
   it('appends the user gem bin when pod is only installed there, without shadowing PATH', () => {
-    const run = vi.fn((command: string) => (command === 'ruby' ? '/home/test/.gem/ruby/2.6.0\n' : missing()));
-    const result = withUserGemPodOnPath({ env, run: run as never, exists: (path) => path === '/home/test/.gem/ruby/2.6.0/bin/pod' });
-    expect(result).toEqual({ PATH: '/usr/bin:/home/test/.gem/ruby/2.6.0/bin' });
+    const run = vi.fn((command: string) => (command === 'ruby' ? `${gemDir}\n` : missing()));
+    const result = withUserGemPodOnPath({ env, run: run as never, exists: (path) => path === join(gemBin, 'pod') });
+    expect(result).toEqual({ PATH: `${env.PATH}${delimiter}${gemBin}` });
     expect(env.PATH).toBe('/usr/bin');
   });
 
@@ -114,16 +117,15 @@ describe('withUserGemPodOnPath', () => {
   it.each([
     ['Ruby is unavailable', () => missing(), true],
     ['Ruby prints no directory', () => '', true],
-    ['the user gem directory has no pod', () => '/home/test/.gem/ruby/2.6.0', false],
+    ['the user gem directory has no pod', () => gemDir, false],
   ])('keeps the environment when %s', (_case, ruby, podExists) => {
     const run = vi.fn((command: string) => (command === 'ruby' ? ruby() : missing()));
     expect(withUserGemPodOnPath({ env, run: run as never, exists: () => podExists })).toBe(env);
   });
 
   it('lets the preflight find pod through the resolved PATH', () => {
-    const gemBin = '/home/test/.gem/ruby/2.6.0/bin';
     const run = vi.fn((command: string, _args: string[], options: { env: NodeJS.ProcessEnv }) => {
-      if (command === 'ruby') return '/home/test/.gem/ruby/2.6.0';
+      if (command === 'ruby') return gemDir;
       if (command === 'pod' && !options.env.PATH?.includes(gemBin)) return missing();
       return '';
     });

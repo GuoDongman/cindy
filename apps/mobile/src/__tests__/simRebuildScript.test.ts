@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { posix, resolve } from 'node:path';
+import { join, posix, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { mobileClientBundleEnv } from '../../../../scripts/shared/client-endpoint-build-env.mjs';
@@ -15,6 +15,9 @@ const mobileDir = '/repo/apps/mobile';
 const cacheRoot = '/home/test/Library/Caches/xdt-maker/sim-app-cache';
 const cacheDir = `${cacheRoot}/ios-arm64-fingerprint`;
 const builtApp = `${mobileDir}/ios/build/Build/Products/Debug-iphonesimulator/Cindy.app`;
+// 实现按宿主平台 join/delimiter 拼 PATH,测试输入与断言同样如此。
+const userGemDir = join('/home/test', '.gem', 'ruby', '2.6.0');
+const userGemBin = join(userGemDir, 'bin');
 const udid = '11111111-1111-1111-1111-111111111111';
 
 // Execute the real CLI workflow with in-memory filesystem and process boundaries.
@@ -32,8 +35,8 @@ async function rebuild(options: {
     exit(code: number) { throw new Error(`exit:${code}`); },
   };
   const execFileSync = vi.fn((command: string, args: string[], opts: object) => {
-    if (options.podOnlyInUserGem && command === 'ruby') return '/home/test/.gem/ruby/2.6.0';
-    if (options.podOnlyInUserGem && command === 'pod' && !(opts as { env?: { PATH?: string } }).env?.PATH?.includes('/.gem/ruby/2.6.0/bin')) {
+    if (options.podOnlyInUserGem && command === 'ruby') return userGemDir;
+    if (options.podOnlyInUserGem && command === 'pod' && !(opts as { env?: { PATH?: string } }).env?.PATH?.includes(userGemBin)) {
       throw Object.assign(new Error('spawn pod ENOENT'), { code: 'ENOENT' });
     }
     if (command === options.unavailableTool) throw Object.assign(new Error('private child output'), { code: options.toolFailure ?? 'ENOENT' });
@@ -121,7 +124,8 @@ describe('sim-rebuild workflow', () => {
     expect(result.log.mock.calls.flat().join('\n')).not.toContain('IOS_BUILD_TOOLS_UNAVAILABLE');
     expect(result.podInstallBounded).toHaveBeenCalledOnce();
     const [{ env }] = result.podInstallBounded.mock.calls[0] as unknown as [{ env: { PATH: string } }];
-    expect(env.PATH.endsWith('/home/test/.gem/ruby/2.6.0/bin')).toBe(true);
+    // 测试进程桩的 env 没有 PATH,所以结果就是用户 gem 目录本身。
+    expect(env.PATH).toBe(userGemBin);
   });
 
   it('installs a compatible cache without requiring CocoaPods', async () => {
