@@ -168,6 +168,23 @@ describe('cc routingTransform — ①.5 隐式来源路由 (智谱 glm-5.3 裸 i
     expect(JSON.parse(forwarded.body.toString('utf8'))).toEqual({ ...body, model: 'claude-opus-5-5' });
   });
 
+  // Codex #7962: same lookup before the session↔provider binding exists (①.5 startup race);
+  // fails without the bare-ID lookup in resolveImplicitLocalBridgeRouteResolution
+  it('routes an unbound 1M request for a model with its own endpoint to that endpoint, with the bare ID', async () => {
+    const MODEL_UPSTREAM = 'https://model-endpoint.example/v1/messages';
+    setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
+      'claude-code': { baseUrl: ZHIPU_UPSTREAM, wireProtocol: 'anthropic-messages', models: [
+        { id: 'glm-5.3', name: 'GLM', route: { baseUrl: MODEL_UPSTREAM, wireProtocol: 'anthropic-messages' } },
+      ] },
+    } })]);
+    setProviderViewsReader(async () => buildRegistry(getActiveCatalog(), { 'zhipu-plan': true }));
+    const body = { model: 'glm-5.3[1m]', max_tokens: 8, messages: [{ role: 'user', content: 'hi' }] };
+    const route = await transform(body, ctxWith({ 'x-api-key': 'sk-gw' }));
+    expect(route?.upstreamOverride).toBe(MODEL_UPSTREAM);
+    const forwarded = await route!.transformRequestBody!(Buffer.from(JSON.stringify(body)), ctxWith({}));
+    expect(JSON.parse(forwarded.body.toString('utf8'))).toEqual({ ...body, model: 'glm-5.3' });
+  });
+
   it('bridges a 1M request for an OpenAI-protocol model to the Claude translation handler', async () => {
     setCustomProviders([buildUserProvider({ id: 'zhipu-plan', name: 'Fixture', runtimes: {
       'claude-code': { baseUrl: ZHIPU_UPSTREAM, wireProtocol: 'anthropic-messages', models: [

@@ -44,6 +44,7 @@ import type { RoutingDecision } from '@cindy/anthropic-compat-proxy';
 import { getActiveCatalog, isXdCodexAnthropicBridgeModel } from './active-catalog.js';
 import { getAppCapabilities } from '../appCapabilities.js';
 import { sessionModelInterface, assertModelInterfaceAvailable } from './session-model-interface.js';
+import { routeLookupModelId } from './claude-model-id.js';
 import { getSessionProvider } from './session-provider-store.js';
 
 /**
@@ -1077,12 +1078,14 @@ export async function resolveImplicitLocalBridgeRouteResolution(
   }
   const source = await connectedDefaultProviderForModel(catalogModelId, agent);
   if (source.kind !== 'provider') return source;
-  const routing = providerRoutingForModel(source.provider, agent, modelId);
+  // cc sends `foo[1m]` for a 1M window while the Provider lists `foo` (and its own route)
+  const lookupModelId = agent === 'claude-code' ? routeLookupModelId(source.provider, modelId) : modelId;
+  const routing = providerRoutingForModel(source.provider, agent, lookupModelId);
   const wire = implicitBridgeWire(routing, agent);
   if (wire !== 'openai-chat' && wire !== 'anthropic-messages' && wire !== 'google-generative-ai' && !(agent === 'claude-code' && wire === 'openai-responses')) {
     return { kind: 'none' };
   }
-  const route = await resolveProviderRouteById(source.provider.id, agent, modelId);
+  const route = await resolveProviderRouteById(source.provider.id, agent, lookupModelId);
   return route ? { kind: 'route', route } : { kind: 'none' };
 }
 
