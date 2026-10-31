@@ -21,12 +21,11 @@ export class PluginAppFiles {
   ) {}
 
   /**
-   * Sign this card's plugin-owned links. `missing:'unsigned'` keeps an
-   * unavailable link as metadata only, so the card still opens; handoff copies
-   * always expire, so their links are kept that way anywhere in the card.
-   * Other links keep the strict default.
+   * Sign this card's plugin-owned links. Handoff copies always expire, so an
+   * unavailable handoff link stays as metadata only and the card still opens;
+   * Library and media links keep the strict rejection.
    */
-  async project<T>(value: T, options: { missing?: 'reject' | 'unsigned' } = {}): Promise<T> {
+  async project<T>(value: T): Promise<T> {
     await this.assertCurrent();
     this.lifetime.signal.throwIfAborted();
     const visit = async (input: unknown, depth: number): Promise<unknown> => {
@@ -41,7 +40,7 @@ export class PluginAppFiles {
         const info = await this.access.describe(this.instance, object.uri);
         await this.assertCurrent();
         this.lifetime.signal.throwIfAborted();
-        if (!info && (options.missing === 'unsigned' || object.uri.startsWith('handoff:'))) {
+        if (!info && object.uri.startsWith('handoff:')) {
           // An echoed link may carry an earlier URL; unavailable means no Host file field at all.
           const meta = object._meta && typeof object._meta === 'object' ? { ...(object._meta as Record<string, unknown>) } : undefined;
           if (!meta || !('cindy/file' in meta)) return object;

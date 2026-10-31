@@ -239,13 +239,13 @@ it('signs live handoff copies and keeps unavailable attachments unsigned', async
       } });
     const files = new PluginAppFiles('card', 'plugin', access, async () => {});
     const link = (file: typeof own) => ({ type: 'resource_link', name: file!.name, uri: file!.ref, mimeType: file!.mimeType, size: file!.size });
-    const [signed, missing, other] = await files.project([link(own), link(deleted), link(foreign)], { missing: 'unsigned' }) as Array<{ _meta?: { 'cindy/file': { url: string } } }>;
+    const [signed, missing, other] = await files.project([link(own), link(deleted), link(foreign)]) as Array<{ _meta?: { 'cindy/file': { url: string } } }>;
     expect(missing).toEqual(link(deleted));
     expect(other).toEqual(link(foreign));
     const url = signed!._meta!['cindy/file'].url;
     expect(await (await files.read(url.split('/').pop()!, new Request(url))).text()).toBe('a,b');
     // Handoff links expire by design, so a result echoing one never blocks the card;
-    // other unavailable links keep the strict default.
+    // other unavailable links (Library, media) keep the strict rejection.
     expect(await files.project({ content: [link(deleted)] })).toEqual({ content: [link(deleted)] });
     // An echoed link that carried an earlier URL loses it once the copy is gone.
     expect(await files.project([{ ...link(deleted), _meta: { 'cindy/file': { url: 'stale' }, note: 1 } }]))

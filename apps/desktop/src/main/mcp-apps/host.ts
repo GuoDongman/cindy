@@ -524,7 +524,7 @@ export class McpAppsHost {
             .then(async () => {
               const attachments = (record.tool._meta as Record<string, unknown> | undefined)?.['cindy/attachments'];
               if (!view.inputSent && view.files && attachments) {
-                const projected = await view.files.project(attachments, { missing: 'unsigned' });
+                const projected = await view.files.project(attachments);
                 await assertCurrent();
                 view.context = { ...view.context, toolInfo: { tool: {
                   ...tool, _meta: { ...tool._meta, 'cindy/attachments': projected },
