@@ -2736,15 +2736,27 @@ export function getCindyGhostsMcpDeps(
         if (signal?.aborted) { revokePageCall(); signal.throwIfAborted(); }
         signal?.addEventListener('abort', revokePageCall, { once: true });
       }
-      const result = await getGhostPipeDispatcher().callGhostTool({
-        ghostId: instanceId,
-        tool,
-        args: mergedArgs,
-        callId,
-        signal,
-        sessionId: callSessionContext?.sessionId,
-        onProgress: pageCall?.onProgress,
-      });
+      // A failed call publishes no card, so its copies could never be used: drop them
+      // instead of letting retries against a broken plugin fill the quota.
+      const discardHandoff = async () => {
+        for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref).catch(() => false);
+      };
+      let result: Awaited<ReturnType<ReturnType<typeof getGhostPipeDispatcher>['callGhostTool']>>;
+      try {
+        result = await getGhostPipeDispatcher().callGhostTool({
+          ghostId: instanceId,
+          tool,
+          args: mergedArgs,
+          callId,
+          signal,
+          sessionId: callSessionContext?.sessionId,
+          onProgress: pageCall?.onProgress,
+        });
+      } catch (error) {
+        await discardHandoff();
+        throw error;
+      }
+      if (!result.ok) await discardHandoff();
       signal?.removeEventListener('abort', revokePageCall);
       // 收口取账(ghostMediaLedger):本次调用期间主机实际入库的媒体地址。
       // 失败也 drain(清账防泄漏),但只在成功结果上附带——cindy-tools 层

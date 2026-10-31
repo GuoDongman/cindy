@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { FileText, RefreshCw } from 'lucide-react';
 
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
+import { Tip } from '@/components/ui/tooltip';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import type { GhostHandoffFile } from '../../../shared/ghost';
@@ -95,14 +96,16 @@ function HandoffFilesBody({
           <FileText size={18} className="shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
           {t('settings.ghosts.handoff.title')}
         </h3>
-        <button
-          type="button"
-          className={ICON_BUTTON_CLASS}
-          onClick={() => void refresh()}
-          aria-label={t('settings.ghosts.handoff.refresh')}
-        >
-          <RefreshCw size={14} aria-hidden="true" />
-        </button>
+        <Tip text={t('settings.ghosts.handoff.refresh')}>
+          <button
+            type="button"
+            className={ICON_BUTTON_CLASS}
+            onClick={() => void refresh()}
+            aria-label={t('settings.ghosts.handoff.refresh')}
+          >
+            <RefreshCw size={14} aria-hidden="true" />
+          </button>
+        </Tip>
       </div>
       <p className="mt-2 max-w-[760px] text-13 text-[var(--text-secondary)]">{t('settings.ghosts.handoff.description')}</p>
 

@@ -4089,6 +4089,14 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
     expect(await store.list('art')).toEqual([]);
   });
 
+  // A call that never succeeds publishes no card; its copies must not fill the quota.
+  it('drops the copies when the plugin call fails', async () => {
+    dispatchMock.mockResolvedValueOnce({ ok: false, errorCode: 'GHOST_CRASHED', message: 'offline' } as never);
+    const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('crash.csv', 'x')] });
+    expect(result).toMatchObject({ ok: false, errorCode: 'GHOST_CRASHED' });
+    expect(await store.list('art')).toEqual([]);
+  });
+
   // The reserved value is host-minted: a model-supplied one never reaches the plugin.
   it('strips a forged reserved argument when nothing is handed over', async () => {
     await makeDeps().callGhostTool({
