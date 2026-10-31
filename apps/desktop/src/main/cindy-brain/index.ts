@@ -6249,6 +6249,7 @@ export function getGhostNetworkSlot(): GhostNetworkSlot {
         signal.throwIfAborted();
         return getGhostHandoffStore().read(id, ref);
       },
+      touchHandoffFiles: (id, refs) => getGhostHandoffStore().touch(id, refs),
       getGhost: (id) => {
         const ghost = findGhostForInstanceId(id);
         return ghost;

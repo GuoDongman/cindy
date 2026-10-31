@@ -8742,8 +8742,10 @@ export const GHOST_FETCH_UPLOAD_FIELD_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export const GHOST_HANDOFF_FILES_ARG = 'cindy_handoff_files';
 /** 交接引用:`handoff:<uuid>`,只在交接给的那个插件实例里有效。 */
 export const GHOST_HANDOFF_REF_RE = /^handoff:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
-/** 副本保留时长,从副本落盘完成起算。 */
+/** 副本连续未使用多久后删除:每次使用(签发、页面读取、上传成功)从那一刻重新起算。 */
 export const GHOST_HANDOFF_TTL_MS = 7 * 24 * 60 * 60_000;
+/** 同一副本两次续期写盘的最小间隔,控制元数据写入次数。 */
+export const GHOST_HANDOFF_RENEW_INTERVAL_MS = 60 * 60_000;
 /** 单次交接、单个文件、整批的上限(与 upload 通道同值,超出也传不出去)。 */
 export const GHOST_HANDOFF_MAX_FILES = 4;
 export const GHOST_HANDOFF_MAX_BYTES_PER_FILE = 64 * 1024 * 1024;
@@ -8776,6 +8778,7 @@ export interface GhostHandoffFile {
   sha256: string;
   /** 毫秒时间戳。 */
   createdAt: number;
+  /** 当前到期时间(最后一次使用 + 7 天);使用时会顺延,不是固定截止时间。 */
   expiresAt: number;
 }
 /** 总仓指纹形状(64 位十六进制,与 blobStore 同口径)。 */

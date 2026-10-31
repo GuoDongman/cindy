@@ -2433,6 +2433,20 @@ describe('Handoff file upload', async () => {
       expect(fetchImpl).not.toHaveBeenCalled();
     }
   });
+  // Sliding expiry: a successful upload is a use and renews the copy for 7 days.
+  it('renews the copy after a successful upload', async () => {
+    const day = 24 * 60 * 60_000;
+    const clock = { now: 0 };
+    const timed = new GhostHandoffStore({ root: () => root, now: () => clock.now });
+    const [renewed] = await timed.import('web-search', [{ name: 'renew.csv', bytes: new TextEncoder().encode('1') }], () => {});
+    clock.now = 6 * day;
+    const { slot } = makeSlot({
+      readHandoffFile: (id, ref) => timed.read(id, ref),
+      touchHandoffFiles: (id, refs) => timed.touch(id, refs),
+    });
+    expect(await slot.handleFetchRequest('web-search', upload({ handoff: [renewed!.ref] }))).toMatchObject({ ok: true });
+    expect((await timed.list('web-search')).find((file) => file.ref === renewed!.ref)?.expiresAt).toBe(13 * day);
+  });
   it('accepts exactly one upload source', async () => {
     const { slot, fetchImpl } = makeSlot({ readHandoffFile });
     expect(await slot.handleFetchRequest('web-search', upload({ handoff: [copy!.ref], hashes: ['a'.repeat(64)] }))).toMatchObject({ ok: false });

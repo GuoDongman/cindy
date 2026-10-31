@@ -113,6 +113,39 @@ describe('GhostHandoffStore', () => {
     await expect(s.import('art', [{ name: 'c.csv', bytes: bytes('3') }], () => {})).resolves.toHaveLength(1);
   });
 
+  // Sliding expiry writes metadata at most once an hour per copy, and only on use:
+  // listing for the settings page never renews.
+  it('renews on use at most once an hour and never on listing', async () => {
+    const now = { value: 0 };
+    const { store: s } = store(now);
+    const [file] = await s.import('art', [{ name: 'a.csv', bytes: bytes('1') }], () => {});
+    const expiry = async () => (await s.list('art'))[0]?.expiresAt;
+    now.value = 30 * 60_000;
+    await s.touch('art', [file!.ref]);
+    expect(await expiry()).toBe(GHOST_HANDOFF_TTL_MS);
+    now.value = 60 * 60_000;
+    await s.touch('art', [file!.ref]);
+    now.value = 90 * 60_000;
+    await s.touch('art', [file!.ref]);
+    await s.list('art');
+    expect(await expiry()).toBe(60 * 60_000 + GHOST_HANDOFF_TTL_MS);
+  });
+
+  // Renewal racing a delete or a source change must neither throw nor revive the copy.
+  it('skips renewal during a delete or a source change', async () => {
+    const now = { value: 0 };
+    const { root, store: s } = store(now);
+    const [gone, kept] = await s.import('art', [{ name: 'a.csv', bytes: bytes('1') }, { name: 'b.csv', bytes: bytes('2') }], () => {});
+    now.value = 2 * 60 * 60_000;
+    await Promise.all([s.delete('art', gone!.ref), s.touch('art', [gone!.ref])]);
+    expect(fs.existsSync(path.join(root, 'art', gone!.ref.slice('handoff:'.length)))).toBe(false);
+    const unblock = s.blockForRelocation(['art']);
+    await expect(s.touch('art', [kept!.ref])).resolves.toBeUndefined();
+    unblock();
+    expect((await s.list('art')).map((file) => [file.name, file.expiresAt])).toEqual([['b.csv', GHOST_HANDOFF_TTL_MS]]);
+    expect(s.isBusy('art')).toBe(false);
+  });
+
   // Isolation: a reference is meaningful only inside the instance it was handed to.
   it('does not open another instance reference', async () => {
     const { store: s } = store({ value: Date.now() });

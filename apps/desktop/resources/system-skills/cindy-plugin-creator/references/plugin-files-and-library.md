@@ -228,9 +228,10 @@ await cindy.library({
   （与 hashes / library 三选一，文件名是净化后的原名，另附 `filename*`）；本机处理则由页面从
   `hostContext.toolInfo.tool._meta['cindy/attachments']` 找到同一 `uri` 的项，用
   `_meta['cindy/file'].url` 读取，在页面里解析后再调用你的 app-only 工具保存结果。
-- 插件拿不到字节和路径，也不能删除副本；副本交出 7 天后宿主自动删除，用户也可以在插件详情页
-  逐个删除。之后上传返回 `errorCode:'HANDOFF_UNAVAILABLE'`，页面上该项没有 `url`；请提示用户
-  重新发送，可用 `expiresAt` 提前说明有效期。
+- 插件拿不到字节和路径，也不能删除副本；副本连续 7 天未使用后宿主自动删除（卡片签发地址、
+  页面读取、`upload.handoff` 上传成功都算使用，会顺延），用户也可以在插件详情页逐个删除。
+  之后上传返回 `errorCode:'HANDOFF_UNAVAILABLE'`，页面上该项没有 `url`；请提示用户重新发送。
+  `expiresAt` 是收到时的当前到期时间，使用时会顺延，不要把它当成固定截止时间。
 - 手机和其他电脑暂时打不开带这类文件的卡片；Node 工作进程不能使用这个能力。
 - 需要 `minCindyVersion: 0.1.123-beta`；旧宿主不认识这个参数，非媒体文件仍会要求改用 dir。
 

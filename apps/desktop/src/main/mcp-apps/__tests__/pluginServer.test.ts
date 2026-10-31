@@ -233,10 +233,7 @@ it('signs live handoff copies and keeps unavailable attachments unsigned', async
     const [foreign] = await store.import('other', [{ name: 'b.csv', bytes: new TextEncoder().encode('y') }], () => {});
     await store.delete('plugin', deleted!.ref);
     const access = createPluginFileAccess({ libraryPath: async () => null, libraryMime: () => 'application/octet-stream',
-      openHandoff: async (instance, ref) => {
-        const opened = await store.open(instance, ref);
-        return opened && { file: opened.file, size: opened.info.size, mimeType: opened.info.mimeType };
-      } });
+      openHandoff: (instance, ref) => store.openForPage(instance, ref) });
     const files = new PluginAppFiles('card', 'plugin', access, async () => {});
     const link = (file: typeof own) => ({ type: 'resource_link', name: file!.name, uri: file!.ref, mimeType: file!.mimeType, size: file!.size });
     const [signed, missing, other] = await files.project([link(own), link(deleted), link(foreign)]) as Array<{ _meta?: { 'cindy/file': { url: string } } }>;
@@ -251,6 +248,48 @@ it('signs live handoff copies and keeps unavailable attachments unsigned', async
     expect(await files.project([{ ...link(deleted), _meta: { 'cindy/file': { url: 'stale' }, note: 1 } }]))
       .toEqual([{ ...link(deleted), _meta: { note: 1 } }]);
     await expect(files.project([{ type: 'resource_link', name: 'x', uri: 'library:missing.csv' }])).rejects.toThrow('MCP_APP_FILE_NOT_AUTHORIZED');
+    files.close();
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Sliding expiry (product decision): a copy in use stays; only 7 days without a
+// link issued or a page read deletes it. Settings listing is not use. Unit tier,
+// real store with an injected clock + the real page file path.
+it('renews handoff copies on page use and drops the link after 7 unused days', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { GhostHandoffStore } = await import('../../cindy-brain/handoffStore.js');
+  const { createPluginFileAccess } = await import('../pluginFileAccess.js');
+  const day = 24 * 60 * 60_000;
+  const clock = { now: 0 };
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ghost-handoff-renew-'));
+  try {
+    const store = new GhostHandoffStore({ root: () => root, now: () => clock.now });
+    const [used, idle] = await store.import('plugin', [
+      { name: 'used.csv', bytes: new TextEncoder().encode('a,b') },
+      { name: 'idle.csv', bytes: new TextEncoder().encode('x') },
+    ], () => {});
+    const access = createPluginFileAccess({ libraryPath: async () => null, libraryMime: () => 'application/octet-stream',
+      openHandoff: (instance, ref) => store.openForPage(instance, ref) });
+    const files = new PluginAppFiles('card', 'plugin', access, async () => {});
+    const link = (file: typeof used) => ({ type: 'resource_link', name: file!.name, uri: file!.ref, mimeType: file!.mimeType, size: file!.size });
+    const signedUrl = async (file: typeof used) =>
+      ((await files.project([link(file)])) as Array<{ _meta?: { 'cindy/file': { url: string } } }>)[0]!._meta?.['cindy/file'].url;
+
+    clock.now = 6 * day;
+    expect(await signedUrl(used)).toBeTypeOf('string');
+    const expiry = async () => Object.fromEntries((await store.list('plugin')).map((file) => [file.name, file.expiresAt]));
+    expect(await expiry()).toEqual({ 'used.csv': 13 * day, 'idle.csv': 7 * day });
+
+    clock.now = 7 * day;
+    expect(await signedUrl(idle)).toBeUndefined();
+    clock.now = 12 * day;
+    const url = (await signedUrl(used))!;
+    expect(await (await files.read(url.split('/').pop()!, new Request(url))).text()).toBe('a,b');
+    expect(await expiry()).toEqual({ 'used.csv': 19 * day });
     files.close();
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

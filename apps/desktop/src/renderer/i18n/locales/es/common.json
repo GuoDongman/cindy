@@ -7856,7 +7856,7 @@
       },
       "handoff": {
         "title": "Archivos entregados a este complemento en conversaciones",
-        "description": "Copias de los archivos que entregaste a este complemento en conversaciones. Cada copia se elimina automáticamente 7 días después de entregarla.",
+        "description": "Copias de los archivos que entregaste a este complemento en conversaciones. Cada copia se elimina automáticamente tras 7 días sin usarse.",
         "empty": "Aún no se ha entregado ningún archivo a este complemento en una conversación.",
         "loadFailed": "No se pudo cargar la lista de archivos. Inténtalo más tarde.",
         "refresh": "Actualizar",
@@ -15964,7 +15964,7 @@
       "titleRevealPath": "¿Permitir que el Agent reciba la ruta local de este archivo multimedia?",
       "count": "{{count}} archivos",
       "descriptionAttachments": "Los siguientes archivos están fuera del directorio de trabajo de esta sesión. Si lo permites, se entregarán a este complemento (solo recibe huellas digitales del contenido, nunca rutas).",
-      "descriptionHandoff": "Los archivos siguientes están fuera del directorio de trabajo de esta sesión. Si lo permites, el complemento recibirá copias de ellos (nunca sus rutas); las copias se eliminan automáticamente a los 7 días.",
+      "descriptionHandoff": "Los archivos siguientes están fuera del directorio de trabajo de esta sesión. Si lo permites, el complemento recibirá copias de ellos (nunca sus rutas); las copias se eliminan automáticamente tras 7 días sin usarse.",
       "descriptionDir": "El siguiente directorio o archivo está fuera del directorio de trabajo de esta sesión. Si lo permites, sus archivos se entregarán a este complemento para subirlos (solo recibe un ticket de un solo uso, nunca rutas).",
       "descriptionSaveDir": "El siguiente directorio está fuera del directorio de trabajo de esta sesión. Si lo permites, este complemento podrá guardar en él los archivos descargados (nunca se sobrescriben los archivos existentes).",
       "descriptionRevealPath": "La ruta se devuelve al Agent actual solo después de que lo permitas y se incluirá en el historial de la conversación; los dispositivos vinculados podrían sincronizar ese historial. Esto no otorga a ningún complemento acceso al archivo.",

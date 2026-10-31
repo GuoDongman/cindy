@@ -93,8 +93,7 @@ export function registerMcpAppsIpc(
       libraryMime: mediaTypeForLibraryPath,
       openHandoff: async (instance, ref) => {
         const { getGhostHandoffStore } = await import('../cindy-brain/index.js');
-        const opened = await getGhostHandoffStore().open(instance, ref);
-        return opened && { file: opened.file, size: opened.info.size, mimeType: opened.info.mimeType };
+        return getGhostHandoffStore().openForPage(instance, ref);
       },
     }),
     owner: currentOwner,

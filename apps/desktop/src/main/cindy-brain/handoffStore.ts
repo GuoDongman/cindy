@@ -6,6 +6,7 @@ import {
   GHOST_HANDOFF_QUOTA_BYTES,
   GHOST_HANDOFF_QUOTA_FILES,
   GHOST_HANDOFF_REF_RE,
+  GHOST_HANDOFF_RENEW_INTERVAL_MS,
   GHOST_HANDOFF_TTL_MS,
   type GhostHandoffFile,
 } from '../../shared/ghost.js';
@@ -18,7 +19,8 @@ import { readToLength } from '../utils/readBoundedFile.js';
  * folder reads like the user's files in Finder / Explorer. Writes land in
  * `<instance>/.tmp/<uuid>` and become visible by one directory rename, so a
  * crash leaves only `.tmp` leftovers for the next sweep. Copies are transient:
- * an unreadable or expired entry is deleted, never repaired.
+ * they expire 7 days after their last use, and an unreadable or expired entry is
+ * deleted, never repaired.
  */
 const TMP = '.tmp';
 const STALE_TMP_MS = 60 * 60_000;
@@ -43,6 +45,8 @@ interface Meta extends Omit<GhostHandoffFile, 'ref'> {
   id: string;
   /** Name on disk; `name` stays the user's original name for display. */
   file: string;
+  /** Last use (or storing); `expiresAt` is this plus the TTL. */
+  lastUsedAt: number;
 }
 
 export class GhostHandoffQuotaError extends Error {}
@@ -88,9 +92,10 @@ async function fsyncDir(dir: string): Promise<void> {
 }
 
 function toFile(meta: Meta): GhostHandoffFile {
-  const { version: _version, id, file: _file, ...rest } = meta;
+  const { version: _version, id, file: _file, lastUsedAt: _lastUsedAt, ...rest } = meta;
   void _version;
   void _file;
+  void _lastUsedAt;
   return { ref: `handoff:${id}`, ...rest };
 }
 
@@ -137,7 +142,7 @@ export class GhostHandoffStore {
         typeof meta.file === 'string' && meta.file === handoffDiskName(meta.file) &&
         typeof meta.mimeType === 'string' && Number.isSafeInteger(meta.size) && meta.size >= 0 &&
         /^[a-f0-9]{64}$/.test(meta.sha256) && Number.isFinite(meta.createdAt) &&
-        Number.isFinite(meta.expiresAt);
+        Number.isFinite(meta.lastUsedAt) && meta.expiresAt === meta.lastUsedAt + GHOST_HANDOFF_TTL_MS;
       return valid ? meta : null;
     } catch {
       return null;
@@ -267,7 +272,7 @@ export class GhostHandoffStore {
           const meta: Meta = {
             version: 1, id, name, file: handoffDiskName(name), mimeType: handoffMimeType(name), size: file.bytes.byteLength,
             sha256: createHash('sha256').update(file.bytes).digest('hex'),
-            createdAt, expiresAt: createdAt + GHOST_HANDOFF_TTL_MS,
+            createdAt, lastUsedAt: createdAt, expiresAt: createdAt + GHOST_HANDOFF_TTL_MS,
           };
           for (const [target, content] of [[meta.file, file.bytes], [META, JSON.stringify(meta)]] as const) {
             const handle = await fs.open(path.join(staging, target), 'wx', 0o600);
@@ -341,6 +346,56 @@ export class GhostHandoffStore {
       return { bytes, name: opened.info.name, mimeType: opened.info.mimeType };
     } finally {
       await opened.file.close();
+    }
+  }
+
+  /** Card page path: issuing a link and the page reading it both count as use. */
+  async openForPage(instance: string, ref: string): Promise<{ file: fs.FileHandle; size: number; mimeType: string } | null> {
+    const opened = await this.open(instance, ref);
+    if (!opened) return null;
+    await this.touch(instance, [ref]);
+    return { file: opened.file, size: opened.info.size, mimeType: opened.info.mimeType };
+  }
+
+  /**
+   * A use (link issued to a page, page read, successful upload) slides expiry to
+   * now + 7 days. At most one write per copy an hour; skipped silently while a
+   * delete or source change is in progress or once the copy is gone, so it never
+   * changes the result of the use itself.
+   */
+  async touch(instance: string, refs: readonly string[]): Promise<void> {
+    const release = this.hold(instance);
+    if (!release) return;
+    try {
+      const dir = this.instanceDir(instance);
+      await this.exclusive(instance, async () => {
+        for (const ref of refs) {
+          const id = GHOST_HANDOFF_REF_RE.exec(ref)?.[1];
+          const meta = id ? await this.readMeta(dir, id) : null;
+          const now = this.now();
+          if (!meta || meta.expiresAt <= now || now - meta.lastUsedAt < GHOST_HANDOFF_RENEW_INTERVAL_MS ||
+              !(await this.payloadIntact(dir, meta))) continue;
+          const next: Meta = { ...meta, lastUsedAt: now, expiresAt: now + GHOST_HANDOFF_TTL_MS };
+          // Same directory, then one rename: readers see the old or the new metadata, never half.
+          const temp = path.join(dir, meta.id, `${META}.${randomUUID()}.tmp`);
+          try {
+            const handle = await fs.open(temp, 'wx', 0o600);
+            try {
+              await handle.writeFile(JSON.stringify(next));
+              await handle.sync();
+            } finally {
+              await handle.close();
+            }
+            await fs.rename(temp, path.join(dir, meta.id, META));
+          } catch {
+            await fs.rm(temp, { force: true }).catch(() => {});
+          }
+        }
+      });
+    } catch {
+      // Renewal is best effort; the use already succeeded.
+    } finally {
+      release();
     }
   }
 

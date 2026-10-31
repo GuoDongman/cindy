@@ -78,6 +78,8 @@ export interface NetworkSlotDeps {
   readLibraryFile?(instanceKey: string, path: string, signal: AbortSignal): Promise<Response>;
   /** Live handoff copy of this instance; null when expired, deleted or never handed over, `changed` when altered on disk. */
   readHandoffFile?(instanceKey: string, ref: string, signal: AbortSignal): Promise<{ bytes: Uint8Array; name: string; mimeType: string } | 'changed' | null>;
+  /** A successful upload counts as use of these handoff copies; renewal never fails the request. */
+  touchHandoffFiles?(instanceKey: string, refs: readonly string[]): Promise<void>;
   uploadFileSize?(instanceKey: string, value: string, library: boolean): Promise<number | undefined>;
   saveLibraryStream?(instanceKey: string, input: {
     path: string; source: AsyncIterable<Uint8Array>; totalBytes?: number;
@@ -1438,6 +1440,9 @@ export class GhostNetworkSlot {
       }
       if (!response) return { ok: false, message: '请求未获得响应' };
       assertStillValid();
+      if (upload?.handoff?.length && response.status >= 200 && response.status < 300) {
+        await this.deps.touchHandoffFiles?.(instanceKey, upload.handoff).catch(() => {});
+      }
 
       // ── 响应收敛:媒体落仓 / 文本透传;体积护栏;响应头白名单 ──────────
       const contentType = response.headers.get('content-type') ?? '';
