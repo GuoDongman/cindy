@@ -486,7 +486,7 @@ object WidgetRenderer {
           val letterStyle = sys(9.5f, pal.ink3)
           val lettersTop = h - 12f - p.lineHeight(letterStyle)
           val barsBottom = lettersTop - 4f
-          val barsHeight = min(36f, max(18f, barsBottom - y - 4f))
+          val barsHeight = min(60f, max(18f, barsBottom - y - 4f)).let { if (it > 36f) 36f + (it - 36f) * 0.5f else it }
           val week = daily.takeLast(7)
           val weekDays = days.takeLast(7)
           p.dailyBars(week, breakdown, RectF(left, barsBottom - barsHeight, left + width, barsBottom), gap = 8f)
@@ -577,7 +577,7 @@ object WidgetRenderer {
           val dateStyle = sys(10f, pal.ink3)
           val datesTop = h - 12f - p.lineHeight(dateStyle)
           val barsBottom = datesTop - 4f
-          val barsHeight = min(80f, max(30f, barsBottom - 15f - p.lineHeight(sys(10f, pal.ink3)) - 5f))
+          val barsHeight = min(130f, max(30f, barsBottom - 15f - p.lineHeight(sys(10f, pal.ink3)) - 5f - 6f)).let { if (it > 80f) 80f + (it - 80f) * 0.8f else it }
           averageLegend(averageLabel, right, barsBottom - barsHeight - 5f - p.lineHeight(sys(10f, pal.ink3)))
           p.dailyBars(daily.takeLast(14), breakdown, RectF(chartLeft, barsBottom - barsHeight, right, barsBottom), gap = 4f, average = average)
           p.text(f.monthDay(days[max(0, days.size - 14)]), chartLeft, datesTop, dateStyle)
