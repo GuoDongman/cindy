@@ -63,6 +63,7 @@ function toFile(meta: Meta): GhostHandoffFile {
 
 export class GhostHandoffStore {
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly holds = new Map<string, number>();
 
   constructor(private readonly deps: { root(): string; now?(): number; quota?: { files: number; bytes: number } }) {}
 
@@ -153,6 +154,26 @@ export class GhostHandoffStore {
     if (files.length + incoming.length > quota.files || bytes > quota.bytes) {
       throw new GhostHandoffQuotaError('handoff quota exceeded');
     }
+  }
+
+  /**
+   * A handoff in flight (stored, not yet delivered) holds its instance so a
+   * source change waits instead of moving the copies away from the call.
+   */
+  hold(instance: string): () => void {
+    this.holds.set(instance, (this.holds.get(instance) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const left = (this.holds.get(instance) ?? 1) - 1;
+      if (left > 0) this.holds.set(instance, left);
+      else this.holds.delete(instance);
+    };
+  }
+
+  isBusy(instance: string): boolean {
+    return this.holds.has(instance);
   }
 
   /** The owner root now; callers that clean up later keep it so an account switch cannot redirect them. */

@@ -4121,6 +4121,18 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
     expect(await store.list('art')).toEqual([]);
   });
 
+  // Stored copies hold the instance until dispatch settles, so a source change waits for the call.
+  it('holds the instance from storing the copies until dispatch settles', async () => {
+    let busyDuringDispatch: boolean | undefined;
+    dispatchMock.mockImplementationOnce(async () => {
+      busyDuringDispatch = store.isBusy('art');
+      return { ok: true as const, result: 'done' };
+    });
+    await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('hold.csv', 'x')] });
+    expect(busyDuringDispatch).toBe(true);
+    expect(store.isBusy('art')).toBe(false);
+  });
+
   // A call that never succeeds publishes no card; its copies must not fill the quota.
   it('drops the copies when the plugin call fails', async () => {
     dispatchMock.mockResolvedValueOnce({ ok: false, errorCode: 'GHOST_CRASHED', message: 'offline' } as never);

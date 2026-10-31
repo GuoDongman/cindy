@@ -209,6 +209,21 @@ describe('market Ghost session boundary', () => {
     expect(source).toContain('if (expected.sourceChanged) assertGhostRelocationIdle(installedGhostStoragePart(installed));');
   });
 
+  // Codex 4431200348: a handoff stored but not yet dispatched must hold off a
+  // source change, or its copies move to the archive key under the call. Unit, real gate.
+  it('blocks relocation while a stored handoff has not finished dispatch', async () => {
+    const { createGhostProductionCallbacks } = await import('./ghostProductionCallbacksFixture.js');
+    const { assertGhostRelocationIdle } = createGhostProductionCallbacks<{ assertGhostRelocationIdle(part: string): void }>(
+      { functions: ['assertGhostRelocationIdle'] },
+    )({
+      hasPendingGhostCalls: () => false, hasRunningGhostErrand: () => false, hasRunningGhostCindyWork: () => false,
+      fsSlotSingleton: null, networkSlotSingleton: null,
+      handoffStoreSingleton: { isBusy: (part: string) => part === 'busy' },
+    });
+    expect(() => assertGhostRelocationIdle('busy')).toThrow('Ghost relocation is waiting for active work to finish');
+    expect(() => assertGhostRelocationIdle('idle')).not.toThrow();
+  });
+
   it('allows explicit local replacement and detaches market routing before landing', () => {
     const updateStart = source.indexOf(
       "ipcMain.handle('ghosts:update'",

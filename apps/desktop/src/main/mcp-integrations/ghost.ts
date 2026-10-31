@@ -2701,12 +2701,15 @@ export function getCindyGhostsMcpDeps(
       // 交接副本最后落盘:前面任何一道闸失败都不留副本、不占配额。
       // Cleanup uses the owner root the copies were written under, not the current account.
       const handoffRoot = handoffPrepared ? getGhostHandoffStore().currentRoot() : '';
+      // Held from storing until dispatch settles: a source change waits for this call.
+      const releaseHandoff = handoffPrepared ? getGhostHandoffStore().hold(instanceId) : () => {};
       if (handoffPrepared) {
         try {
           handoffFiles = await getGhostHandoffStore().import(instanceId, handoffPrepared.files, () => {
             if (handoffExpired()) throw new Error(GRANT_AUTHORIZATION_CHANGED_MESSAGE);
           }, handoffRoot);
         } catch (error) {
+          releaseHandoff();
           if (handoffExpired()) return handoffDenied;
           return {
             ok: false,
@@ -2717,6 +2720,7 @@ export function getCindyGhostsMcpDeps(
         // The final rename can race an approval change: re-check and drop the new copies.
         if (handoffExpired()) {
           for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref, handoffRoot).catch(() => false);
+          releaseHandoff();
           return handoffDenied;
         }
         mergedArgs = { ...mergedArgs, [GHOST_HANDOFF_FILES_ARG]: handoffFiles };
@@ -2766,6 +2770,8 @@ export function getCindyGhostsMcpDeps(
       } catch (error) {
         await discardHandoff();
         throw error;
+      } finally {
+        releaseHandoff();
       }
       if (!result.ok) await discardHandoff();
       signal?.removeEventListener('abort', revokePageCall);

@@ -605,7 +605,7 @@ Library 请求同时绑定迁移代次和安装批准，根解析、排队及开
   记忆，自动放行不写人工授权），落盘的是裁决前读入的字节。副本只能经 `upload.handoff` 出网，
   或由本卡页面经签发的只读地址读取；插件不能读取字节或删除副本。副本 7 天后由 Host 删除
   （访问时、启动后延迟及切换账号时清理），用户可在插件详情页逐个删除；卸载删除、换源随
-  归档实例键搬走。Node 工作进程不开放。回归见 `handoffStore.test.ts` 与 `ghostWorkdirGate.test.ts`。
+  归档实例键搬走（副本已落盘、派发未结束时换源等待）。Node 工作进程不开放。回归见 `handoffStore.test.ts` 与 `ghostWorkdirGate.test.ts`。
 - 媒体模型接入分成两层：插件声明并封装业务能力，Cindy Core 提供低级目录和调用能力。
   插件设置页／panel 只能通过同源只读 `/media-models?type=image|video` 配置模型；Host 按
   Gateway `mode` 切图片／视频大类，并结合插件 `cindy.image/video` 声明、Gateway
