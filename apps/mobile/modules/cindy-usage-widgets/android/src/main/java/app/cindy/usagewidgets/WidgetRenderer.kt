@@ -207,9 +207,10 @@ object WidgetRenderer {
       nameSize: Float, whenSize: Float, stacked: Boolean, coarseWhen: Boolean,
     ) {
       val fixed = columnHeight(valueSize, nameSize, whenSize, stacked)
-      val tubeH = (bottom - top - fixed).coerceIn(min(tubeHeight, 32f), maxTubeHeight)
+      val tubeH = (bottom - top - fixed).coerceIn(min(tubeHeight, 32f), min(maxTubeHeight, tubeWidth * 8))
       val colWidth = (right - left - gap * (list.size - 1)) / list.size
-      val blockTop = bottom - fixed - tubeH
+      // Taller than the tubes can sensibly grow (a tall, narrow cell): center the block instead of leaving the top empty.
+      val blockTop = top + max(0f, (bottom - top - fixed - tubeH) / 2)
       list.forEachIndexed { i, s ->
         column(s, left + i * (colWidth + gap), blockTop, colWidth, tubeWidth, tubeH, valueSize, unitSize, nameSize, whenSize, stacked, coarseWhen)
       }
@@ -243,7 +244,7 @@ object WidgetRenderer {
           val stale = f.staleLabel(6.0)
           var top = 13f
           if (stale != null) top += staleLine(stale, 8f, 13f, w - 16f) + 4f
-          columns(list, 8f, w - 8f, top, h - 12f, 0f, 22f, if (stale == null) 62f else 44f, 96f, 16f, 9.5f, 10f, 10f, stacked = true, coarseWhen = true)
+          columns(list, 8f, w - 8f, top, h - 12f, 0f, 22f, if (stale == null) 62f else 44f, 400f, 16f, 9.5f, 10f, 10f, stacked = true, coarseWhen = true)
         }
         WidgetFamily.Large -> {
           val list = sources.take(7)
@@ -252,7 +253,7 @@ object WidgetRenderer {
           p.fitText(f.updatedLabel(), 14f, 16f, update, w - 28f, Align.End)
           val card = monthCardHeight()
           val top = 16f + p.lineHeight(update) + 10f
-          columns(list, 14f, w - 14f, top, h - 14f - card - 8f, if (list.size > 6) 2f else 4f, 38f, 100f, 190f, 20f, 12f, 10.5f, 10.5f, stacked = true, coarseWhen = false)
+          columns(list, 14f, w - 14f, top, h - 14f - card - 8f, if (list.size > 6) 2f else 4f, 38f, 100f, 400f, 20f, 12f, 10.5f, 10.5f, stacked = true, coarseWhen = false)
           monthCard(f.snapshot, 14f, h - 14f - card, w - 28f, card)
         }
         WidgetFamily.Medium -> {
@@ -260,7 +261,7 @@ object WidgetRenderer {
           val stale = f.staleLabel(6.0)
           var top = 14f
           if (stale != null) top += staleLine(stale, 16f, 14f, w - 32f) + 4f
-          columns(list, 12f, w - 12f, top, h - 12f, 0f, 28f, if (stale == null) 72f else 54f, 110f, 18f, 11f, 10.5f, 10f, stacked = false, coarseWhen = false)
+          columns(list, 12f, w - 12f, top, h - 12f, 0f, 28f, if (stale == null) 72f else 54f, 400f, 18f, 11f, 10.5f, 10f, stacked = false, coarseWhen = false)
         }
       }
     }

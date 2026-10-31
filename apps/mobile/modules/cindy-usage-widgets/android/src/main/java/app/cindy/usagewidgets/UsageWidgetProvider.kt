@@ -30,7 +30,7 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
    */
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action == ACTION_RENDER_PREVIEWS && context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-      renderPreviews(context, intent.getStringExtra("variant") ?: "multi")
+      renderPreviews(context, intent.getStringExtra("variant") ?: "multi", intent.getFloatExtra("width", 0f), intent.getFloatExtra("height", 0f))
       return
     }
     super.onReceive(context, intent)
@@ -43,15 +43,15 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
   companion object {
     const val ACTION_RENDER_PREVIEWS = "app.cindy.usagewidgets.RENDER_PREVIEWS"
 
-    private fun renderPreviews(context: Context, variant: String) {
+    private fun renderPreviews(context: Context, variant: String, width: Float, height: Float) {
       val directory = java.io.File(context.cacheDir, "widget-previews").apply { mkdirs() }
-      val sizes = mapOf(
+      val sizes = if (width > 0 && height > 0) mapOf(WidgetFamily.of(width, height) to Pair(width, height)) else mapOf(
         WidgetFamily.Small to Pair(158f, 158f), WidgetFamily.Medium to Pair(338f, 158f), WidgetFamily.Large to Pair(338f, 354f),
       )
       val states = if (variant == "empty") mapOf("empty" to WidgetState.Empty) else mapOf(variant to WidgetSamples.state(variant))
       for ((name, state) in states) for ((family, size) in sizes) for (dark in listOf(false, true)) for (kind in WidgetKind.values()) {
         val bitmap = WidgetRenderer.render(context, kind, state, size.first, size.second, 3f, dark, family = family)
-        java.io.File(directory, "${kind.name.lowercase()}-$name-${family.name.lowercase()}-${if (dark) "dark" else "light"}.png").outputStream().use {
+        java.io.File(directory, "${kind.name.lowercase()}-$name-${family.name.lowercase()}${if (width > 0) "-${width.toInt()}x${height.toInt()}" else ""}-${if (dark) "dark" else "light"}.png").outputStream().use {
           bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
         }
       }
