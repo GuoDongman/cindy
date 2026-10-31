@@ -76,7 +76,9 @@ describe('GhostHandoffStore', () => {
   it('stores each copy under a readable portable name next to hidden metadata', async () => {
     const { root, store: s } = store({ value: Date.now() });
     const long = '季度销售数据汇总'.repeat(10) + '.xlsx';
-    const names = [long, 'CON.csv', 'report..', '???.csv', 'a:b.tsv'];
+    // Greptile 4431495701: a device name at the length limit must keep its `_` within it.
+    const reservedLong = 'CON.' + 'a'.repeat(56) + '.csv';
+    const names = [long, 'CON.csv', 'report..', '???.csv', 'a:b.tsv', reservedLong];
     const files = await s.import('art', names.map((name) => ({ name, bytes: bytes(name) })), () => {});
     const onDisk = files.map((file) => {
       const dir = path.join(root, 'art', file.ref.slice('handoff:'.length));
@@ -85,9 +87,11 @@ describe('GhostHandoffStore', () => {
 
     expect(onDisk).toEqual([
       ['季度销售数据汇总'.repeat(10).slice(0, 59) + '.xlsx'],
-      ['_CON.csv'], ['report'], ['file.csv'], ['ab.tsv'],
+      ['_CON.csv'], ['report'], ['file.csv'], ['ab.tsv'], ['_CON.' + 'a'.repeat(55) + '.csv'],
     ]);
     expect(files.map((file) => file.name)).toEqual(names);
+    // The stored name must validate again on the next read, or the copy is swept as damaged.
+    expect((await s.list('art')).map((file) => file.name).sort()).toEqual([...names].sort());
     const opened = await s.open('art', files[0]!.ref);
     expect(await opened!.file.readFile({ encoding: 'utf8' })).toBe(long);
     await opened!.file.close();

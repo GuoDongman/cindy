@@ -70,12 +70,13 @@ export function handoffDiskName(name: string): string {
   let ext = hasExt ? clean(base.slice(dot)).replace(/[. ]+$/, '') : '';
   if (ext === '.') ext = '';
   let stem = clean(hasExt ? base.slice(0, dot) : base).replace(/^[. ]+/, '');
-  const fits = () => [...stem].length + ext.length <= DISK_NAME_CHARS &&
-    Buffer.byteLength(stem + ext) <= DISK_NAME_BYTES;
+  // The `_` before a device name counts toward the limits, so a stored name cleans to itself.
+  const named = () => (WINDOWS_RESERVED_BASENAME_RE.test(stem + ext) ? '_' : '') + stem + ext;
+  const fits = () => [...named()].length <= DISK_NAME_CHARS && Buffer.byteLength(named()) <= DISK_NAME_BYTES;
   while (!fits()) stem = [...stem].slice(0, -1).join('');
+  // Stripping only shortens the stem, so a newly needed `_` still fits.
   stem = stem.replace(/[. ]+$/, '') || 'file';
-  // Checked after shortening: a cut can leave a device name such as `NUL`.
-  return WINDOWS_RESERVED_BASENAME_RE.test(stem + ext) ? `_${stem}${ext}` : stem + ext;
+  return named();
 }
 
 async function fsyncDir(dir: string): Promise<void> {
