@@ -2770,13 +2770,14 @@ export function getCindyGhostsMcpDeps(
           sessionId: callSessionContext?.sessionId,
           onProgress: pageCall?.onProgress,
         });
+        // Still held: a source change must not move the copies before they are dropped.
+        if (!result.ok) await discardHandoff();
       } catch (error) {
         await discardHandoff();
         throw error;
       } finally {
         releaseHandoff();
       }
-      if (!result.ok) await discardHandoff();
       signal?.removeEventListener('abort', revokePageCall);
       // 收口取账(ghostMediaLedger):本次调用期间主机实际入库的媒体地址。
       // 失败也 drain(清账防泄漏),但只在成功结果上附带——cindy-tools 层

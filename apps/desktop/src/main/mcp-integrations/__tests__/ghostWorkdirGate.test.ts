@@ -4149,8 +4149,20 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
   // A call that never succeeds publishes no card; its copies must not fill the quota.
   it('drops the copies when the plugin call fails', async () => {
     dispatchMock.mockResolvedValueOnce({ ok: false, errorCode: 'GHOST_CRASHED', message: 'offline' } as never);
-    const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('crash.csv', 'x')] });
-    expect(result).toMatchObject({ ok: false, errorCode: 'GHOST_CRASHED' });
+    // Codex 4431531968: dropped while still held, or a source change could move them first.
+    const heldWhileDeleting: boolean[] = [];
+    const remove = store.delete.bind(store);
+    const spy = vi.spyOn(store, 'delete').mockImplementation((...args) => {
+      heldWhileDeleting.push(store.isBusy('art'));
+      return remove(...args);
+    });
+    try {
+      const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('crash.csv', 'x')] });
+      expect(result).toMatchObject({ ok: false, errorCode: 'GHOST_CRASHED' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(heldWhileDeleting).toEqual([true]);
     expect(await store.list('art')).toEqual([]);
   });
 
