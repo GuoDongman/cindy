@@ -179,6 +179,8 @@ export interface ScheduleFormState {
   preRunHookTimeoutSec: string;
   /** 前置检查用脚本还是插件(仅 preRunHookEnabled 时有意义)。 */
   preRunSource: 'script' | 'plugin';
+  /** 打开时脚本与插件都已配置(Agent 设的)：界面显示插件，保存时脚本原样保留。 */
+  preRunKeepScript?: boolean;
   /** 插件前置检查选定的插件实例 id;空 = 还没选。 */
   preRunPluginId: string;
   /** 插件没回应、出错或不可用时的处理。 */
@@ -533,10 +535,11 @@ export function parsePreRunHookTimeoutMs(sec: string): number | undefined {
 
 export function buildPreRunHook(
   form: Pick<ScheduleFormState, 'preRunHookEnabled' | 'preRunHookCommand' | 'preRunHookTimeoutSec'>
-    & Partial<Pick<ScheduleFormState, 'preRunSource'>>,
+    & Partial<Pick<ScheduleFormState, 'preRunSource' | 'preRunKeepScript'>>,
 ): CreateScheduleInput['preRunHook'] {
   const command = form.preRunHookCommand.trim();
-  if (!form.preRunHookEnabled || form.preRunSource === 'plugin' || !command) return undefined;
+  if (!form.preRunHookEnabled || !command) return undefined;
+  if (form.preRunSource === 'plugin' && !form.preRunKeepScript) return undefined;
   // 显式填写的超时原样落库;空 / 非法 → undefined = 不限时(与 main 侧
   // resolvePreRunHookTimeoutMs 语义一致)。不再对任何值做"等于默认就不落库"
   // 的过滤——默认超时已移除,undefined 的含义是不限时而非跟随默认。

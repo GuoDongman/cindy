@@ -225,7 +225,7 @@ async function execute(scope: string, routine: Routine, run: RoutineRun, signal:
     log.info('routine stopped by plugin control point', {
       routineId: routine.id, ghostId: gate.ghostId, action: gate.action, failure: gate.failure,
     });
-    if (gate.action === 'skip') return { skipped: true };
+    if (gate.action === 'skip') return { skipped: true, resultText: controlPointStopMessage(gate) };
     throw new Error(controlPointStopMessage(gate));
   }
   const root = ownerScopedUserDataPath();

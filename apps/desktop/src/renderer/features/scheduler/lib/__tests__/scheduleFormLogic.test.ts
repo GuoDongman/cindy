@@ -34,6 +34,7 @@ import {
   missingRequiredTemplateParamLabel,
   isFollowingSessionSelection,
   needsBoundSessionGenerationRouteResolution,
+  buildPreRunHook,
   resolveScheduleGenerationProviderId,
   resolveScheduleModelEfforts,
   resolveTemplateAgentFields,
@@ -70,6 +71,18 @@ const tapsvcProvider: ProviderView = {
     }],
   },
 };
+
+// Review of #8235: an automation with both a script and a plugin (set by an Agent) opens on the
+// plugin; saving an unrelated edit must keep the script, while choosing the plugin instead of a
+// script must still drop it. Existing cases do not cover the plugin source.
+describe('buildPreRunHook with a plugin source', () => {
+  const form = { preRunHookEnabled: true, preRunHookCommand: 'sh check.sh', preRunHookTimeoutSec: '' };
+  it('keeps the saved script only when the task opened with both', () => {
+    expect(buildPreRunHook({ ...form, preRunSource: 'plugin', preRunKeepScript: true })?.command).toBe('sh check.sh');
+    expect(buildPreRunHook({ ...form, preRunSource: 'plugin' })).toBeUndefined();
+    expect(buildPreRunHook({ ...form, preRunSource: 'script' })?.command).toBe('sh check.sh');
+  });
+});
 
 describe('resolveScheduleGenerationProviderId', () => {
   it('materializes the effective custom provider when the stored provider id is empty', () => {

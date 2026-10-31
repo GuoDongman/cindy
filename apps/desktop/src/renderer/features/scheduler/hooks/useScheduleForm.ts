@@ -284,6 +284,7 @@ export function makeFormFromSchedule(s: Schedule | null): ScheduleFormState {
     preRunHookEnabled: !!s.preRunHook?.command || !!s.preRunPlugin,
     // 两者都有时(Agent 设的)界面显示插件;脚本保持原样直到用户改成脚本来源。
     preRunSource: s.preRunPlugin ? 'plugin' : 'script',
+    preRunKeepScript: !!s.preRunPlugin && !!s.preRunHook?.command,
     preRunPluginId: s.preRunPlugin?.pluginId ?? '',
     preRunPluginOnFailure: s.preRunPlugin?.onFailure ?? GHOST_CONTROL_POINTS['will-schedule-run'].defaultOnFailure,
     preRunHookCommand: s.preRunHook?.command ?? '',

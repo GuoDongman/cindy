@@ -18,7 +18,7 @@ import type { BrowserWindow } from 'electron';
 import { eq } from 'drizzle-orm';
 
 import { Scheduler } from '@cindy/maker-scheduler';
-import type { FireContext, FireResult, Logger, PreRunPluginConfig, Schedule, ScheduleRunner } from '@cindy/maker-scheduler';
+import type { FireContext, Logger, PreRunPluginConfig, Schedule, ScheduleRunner } from '@cindy/maker-scheduler';
 import type { GhostControlPointResult, GhostScheduleRunPointData } from '../../shared/ghost.js';
 import type { Maker } from '@cindy/maker-core';
 import type { FeishuIM } from '@cindy/im';
@@ -66,6 +66,7 @@ import { buildForcedFailureRun } from './forcedFailureRun';
 import { ScriptScheduleRunner } from './script-runner';
 import { SchedulerScriptCapabilityBroker } from './script-capability-broker';
 import { DesktopNotifier } from './notifier';
+import { screenScheduleRun } from './controlPointGate';
 import { sendFeishuSessionNotification } from '../im/feishu/notificationOrigin';
 import { withScheduleLock } from './scheduleLock';
 import { wecomGroupNotificationService } from '../wecomGroupNotification';
@@ -88,36 +89,6 @@ export interface StartSchedulerDeps {
   ) => Promise<GhostControlPointResult>;
   /** 保存插件前置检查时把插件解析为实例 id;插件不可选时抛错。 */
   resolvePreRunPlugin?: (pluginId: string) => string;
-}
-
-/** 伙伴例行任务的承载任务按例行任务自己的设置在更早处询问，这里不重复问。 */
-function isRoutineBackingSchedule(schedule: Schedule): boolean {
-  return schedule.source === 'bot' && schedule.id.startsWith('routine-');
-}
-
-async function screenScheduleRun(
-  screen: NonNullable<StartSchedulerDeps['screenControlPoint']>,
-  schedule: Schedule,
-  ctx: FireContext,
-): Promise<FireResult | null> {
-  const target = schedule.preRunPlugin;
-  if (!target || ctx.resumeSessionId || isRoutineBackingSchedule(schedule)) return null;
-  const gate = await screen('will-schedule-run', {
-    scheduleId: schedule.id,
-    runId: ctx.runId,
-    name: schedule.name,
-    prompt: schedule.executionMode === 'script' ? '' : schedule.prompt,
-    executionMode: schedule.executionMode === 'script' ? 'script' : 'agent',
-    trigger: schedule.manual ? 'manual' : schedule.intervalMs ? 'interval' : schedule.recurring === false ? 'once' : 'cron',
-    firedAt: ctx.firedAt,
-  }, target);
-  if (ctx.signal.aborted) throw new DOMException('aborted', 'AbortError');
-  if (gate.action === 'allow') return null;
-  const who = gate.failure
-    ? `Plugin "${gate.ghostName}" was unavailable or did not answer; handled by this task's failure setting`
-    : gate.reason ? `Stopped by plugin "${gate.ghostName}": ${gate.reason}` : `Stopped by plugin "${gate.ghostName}"`;
-  if (gate.action === 'skip') return { sessionId: '', skipped: true, resultText: who };
-  throw new Error(who);
 }
 
 let _scheduler: Scheduler | null = null;
@@ -220,11 +191,21 @@ async function startSchedulerInternal(deps: StartSchedulerDeps): Promise<Schedul
     notifier,
     getDb: deps.getDb,
   });
+  // 与检查脚本拦下时同一条失败通知：先认领，避免卡死守卫再投第二条。
+  const notifyPluginStop = async (schedule: Schedule, ctx: FireContext, errorMsg: string) => {
+    if (_scheduler?.isRunAbandoned(ctx.runId)) return;
+    ctx.onRunnerNotified?.('failure');
+    await notifier.notify(schedule, {
+      id: ctx.runId, scheduleId: schedule.id, firedAt: ctx.firedAt, finishedAt: Date.now(), status: 'failed', errorMsg,
+    }).catch(() => {});
+  };
   const runner: ScheduleRunner = {
     fire: (schedule, ctx) =>
       withScheduleLock(schedule.id, ctx.signal, async () => {
         // 所有定时任务(Agent / 脚本)的唯一入口：插件前置检查放在检查脚本、建任务之前。
-        const stopped = deps.screenControlPoint ? await screenScheduleRun(deps.screenControlPoint, schedule, ctx) : null;
+        const stopped = deps.screenControlPoint
+          ? await screenScheduleRun(deps.screenControlPoint, schedule, ctx, (errorMsg) => notifyPluginStop(schedule, ctx, errorMsg))
+          : null;
         if (stopped) return stopped;
         return schedule.executionMode === 'script'
           ? scriptRunner.fire(schedule, ctx)
