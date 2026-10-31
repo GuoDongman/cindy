@@ -247,6 +247,9 @@ it('signs live handoff copies and keeps unavailable attachments unsigned', async
     // Handoff links expire by design, so a result echoing one never blocks the card;
     // other unavailable links keep the strict default.
     expect(await files.project({ content: [link(deleted)] })).toEqual({ content: [link(deleted)] });
+    // An echoed link that carried an earlier URL loses it once the copy is gone.
+    expect(await files.project([{ ...link(deleted), _meta: { 'cindy/file': { url: 'stale' }, note: 1 } }]))
+      .toEqual([{ ...link(deleted), _meta: { note: 1 } }]);
     await expect(files.project([{ type: 'resource_link', name: 'x', uri: 'library:missing.csv' }])).rejects.toThrow('MCP_APP_FILE_NOT_AUTHORIZED');
     files.close();
   } finally {

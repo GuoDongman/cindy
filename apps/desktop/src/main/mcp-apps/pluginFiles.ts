@@ -41,7 +41,13 @@ export class PluginAppFiles {
         const info = await this.access.describe(this.instance, object.uri);
         await this.assertCurrent();
         this.lifetime.signal.throwIfAborted();
-        if (!info && (options.missing === 'unsigned' || object.uri.startsWith('handoff:'))) return object;
+        if (!info && (options.missing === 'unsigned' || object.uri.startsWith('handoff:'))) {
+          // An echoed link may carry an earlier URL; unavailable means no Host file field at all.
+          const meta = object._meta && typeof object._meta === 'object' ? { ...(object._meta as Record<string, unknown>) } : undefined;
+          if (!meta || !('cindy/file' in meta)) return object;
+          delete meta['cindy/file'];
+          return { ...object, _meta: meta };
+        }
         if (!info) throw new Error('MCP_APP_FILE_NOT_AUTHORIZED');
         let token = [...this.grants].find(([, uri]) => uri === object.uri)?.[0];
         if (!token) {

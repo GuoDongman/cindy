@@ -1112,6 +1112,31 @@ function withoutHandoffArg(args: Record<string, unknown>): Record<string, unknow
   return rest;
 }
 
+/**
+ * Read the file the classifier resolved, not whatever the path points to now:
+ * no final link, and after opening the path must still be that same file at
+ * the same real path (a swapped parent directory changes the real path).
+ */
+async function readClassifiedFile(realPath: string): Promise<Uint8Array | null> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(realPath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+  } catch {
+    return null;
+  }
+  try {
+    const opened = await handle.stat({ bigint: true });
+    const current = await fs.promises.lstat(realPath, { bigint: true });
+    if (!opened.isFile() || opened.dev !== current.dev || opened.ino !== current.ino ||
+        (await fs.promises.realpath(realPath)) !== realPath) return null;
+    return await handle.readFile();
+  } catch {
+    return null;
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
 function handoffQuotaMessage(): string {
   return `该插件保存的对话文件已达上限(${GHOST_HANDOFF_QUOTA_BYTES / 1024 / 1024} MB 或 ${GHOST_HANDOFF_QUOTA_FILES} 个);请让用户在插件详情里删除旧文件后重试`;
 }
@@ -1171,12 +1196,8 @@ async function prepareHandoffAttachments(params: {
   const files: Array<{ name: string; bytes: Uint8Array; absPath: string; mimeType: string; outside: boolean; url: string }> = [];
   let read = 0;
   for (const c of candidates) {
-    let bytes: Uint8Array;
-    try {
-      bytes = await fs.promises.readFile(c.absPath);
-    } catch {
-      return { ok: false, message: `附件读取失败:${c.name}(文件不可读或已被移动)` };
-    }
+    const bytes = await readClassifiedFile(c.absPath);
+    if (!bytes) return { ok: false, message: `附件读取失败:${c.name}(文件不可读或已被移动)` };
     if (bytes.byteLength > GHOST_HANDOFF_MAX_BYTES_PER_FILE) {
       return { ok: false, message: `文件过大(${c.name}):单个文件上限 ${GHOST_HANDOFF_MAX_BYTES_PER_FILE / 1024 / 1024} MB` };
     }
@@ -2681,6 +2702,11 @@ export function getCindyGhostsMcpDeps(
             errorCode: 'ATTACHMENT_INVALID',
             message: error instanceof GhostHandoffQuotaError ? handoffQuotaMessage() : '附件保存失败,请稍后重试',
           };
+        }
+        // The final rename can race an approval change: re-check and drop the new copies.
+        if (handoffExpired()) {
+          for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref).catch(() => false);
+          return handoffDenied;
         }
         mergedArgs = { ...mergedArgs, [GHOST_HANDOFF_FILES_ARG]: handoffFiles };
       }

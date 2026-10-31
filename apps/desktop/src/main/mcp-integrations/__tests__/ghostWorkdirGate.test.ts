@@ -3985,6 +3985,44 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
     expect(await store.list('art')).toEqual([]);
   });
 
+  // Compatibility: a same-name business parameter that is not the reserved array keeps its behaviour.
+  it('ignores a same-name parameter that is not declared as an array', async () => {
+    listMock.mockReturnValue([chipGhost('art', ['tool'], { tools: [{ ...handoffTool, parameters: { type: 'object', properties: { cindy_handoff_files: { type: 'string' } } } }] })]);
+    const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: { cindy_handoff_files: 'business' }, attachments: [csv('string.csv', 'x')] });
+    expect(result).toMatchObject({ ok: false, errorCode: 'ATTACHMENT_INVALID', message: expect.stringContaining('其它类型请改用 ghost_call 顶层 dir') });
+    expect(await store.list('art')).toEqual([]);
+  });
+
+  // A path swapped for a link after classification is not read (no confirmation bypass).
+  it('refuses a classified path that became a link before reading', async () => {
+    const target = csv('outside-target.csv', 'secret');
+    const link = path.join(outsideDir, 'swapped.csv');
+    fs.rmSync(link, { force: true });
+    fs.symlinkSync(target, link);
+    classifyLocalAttachmentPathMock.mockImplementation((...args: Parameters<typeof realClassify>) => {
+      const result = realClassify(...args);
+      return result.kind === 'outside-workdir' ? { ...result, kind: 'inside-workdir', absPath: link } : result;
+    });
+    const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [link] });
+    expect(result).toMatchObject({ ok: false, errorCode: 'ATTACHMENT_INVALID' });
+    expect(confirmRequestMock).not.toHaveBeenCalled();
+    expect(await store.list('art')).toEqual([]);
+  });
+
+  // An approval that lapses while the copies are written is re-checked before dispatch.
+  it('drops new copies when authorization lapses during the final write', async () => {
+    const write = store.import.bind(store);
+    vi.spyOn(store, 'import').mockImplementation(async (...args) => {
+      const files = await write(...args);
+      activeSessionAvailableMock.mockReturnValue(false);
+      return files;
+    });
+    const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('lapse.csv', 'x')] });
+    expect(result).toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(await store.list('art')).toEqual([]);
+  });
+
   // Approved bytes are the stored bytes; a denial leaves no copy behind.
   it('stores the bytes read before confirmation and nothing after a denial', async () => {
     const file = csv('changed.csv', 'before');
@@ -4044,8 +4082,8 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
   it('stores no copy when a later handoff gate is denied', async () => {
     const dir = path.join(outsideDir, 'later-gate');
     fs.mkdirSync(dir, { recursive: true });
-    confirmRequestMock.mockImplementation(async (_session: string, request: { lane: string }) =>
-      ({ confirmed: request.lane === 'handoff', allowDirs: false }));
+    confirmRequestMock.mockImplementation(async (...args: unknown[]) =>
+      ({ confirmed: (args[1] as { lane: string }).lane === 'handoff', allowDirs: false }));
     const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('late.csv', 'x')], dir });
     expect(result).toMatchObject({ ok: false, errorCode: 'DIR_INVALID' });
     expect(await store.list('art')).toEqual([]);

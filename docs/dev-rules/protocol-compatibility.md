@@ -4343,7 +4343,7 @@ Chat Server 请求复用既有消息 `content` 的 media 块及 `threadRootId`�
 
 ## 插件对话文件交接（`handoff:`）
 
-工具参数表声明 `cindy_handoff_files` 才启用；未声明的工具与旧插件行为逐字不变（非媒体仍报改用 dir）。
+工具参数表把 `cindy_handoff_files` 声明为数组（`{"type":"array"}`）才启用，同名的其它形态参数不受影响；未声明的工具与旧插件行为逐字不变（非媒体仍报改用 dir）。
 插件收到 `args.cindy_handoff_files`，`upload` 增加三选一的 `handoff` 来源，失败码 `HANDOFF_UNAVAILABLE`；
 用到它的插件需声明 `minCindyVersion: 0.1.123-beta`（版本号待确认），旧宿主不认识该参数。
 卡片记录的 `cindy/attachments` 新增 `handoff:<uuid>` 资源链接，字段沿用标准 `resource_link`，不新增

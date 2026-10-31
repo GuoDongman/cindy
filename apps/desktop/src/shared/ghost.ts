@@ -8739,11 +8739,16 @@ export const GHOST_HANDOFF_QUOTA_FILES = 200;
 /** 副本过期或已被删除时,上传与读取返回的稳定失败码。 */
 export const GHOST_HANDOFF_UNAVAILABLE = 'HANDOFF_UNAVAILABLE';
 
-/** 工具参数表显式声明保留参数,才接收对话文件交接。 */
+/**
+ * 工具参数表显式把保留参数声明为数组,才接收对话文件交接;同名但其它形态的
+ * 存量业务参数保持原行为。
+ */
 export function ghostToolDeclaresHandoff(tool: GhostToolDecl | undefined): boolean {
   const properties = tool?.parameters?.properties;
-  return Boolean(properties && typeof properties === 'object' && !Array.isArray(properties) &&
-    Object.prototype.hasOwnProperty.call(properties, GHOST_HANDOFF_FILES_ARG));
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties) ||
+      !Object.prototype.hasOwnProperty.call(properties, GHOST_HANDOFF_FILES_ARG)) return false;
+  const schema = (properties as Record<string, unknown>)[GHOST_HANDOFF_FILES_ARG];
+  return Boolean(schema && typeof schema === 'object' && (schema as { type?: unknown }).type === 'array');
 }
 
 /** 注入 args[GHOST_HANDOFF_FILES_ARG] 的单项,也是设置页列表的单项。 */
