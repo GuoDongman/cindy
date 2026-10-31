@@ -590,6 +590,15 @@ Library 请求同时绑定迁移代次和安装批准，根解析、排队及开
   并在票据库内重新解析核对，路径映射已变化时拒绝并要求重新确认。出票后真正读／写时仍须
   再次核对根与目标真身；保存文件必须排他创建且不跟随最终 symlink，不能让短命票据留下消费期
   TOCTOU。附件继续使用裁决前已读入的字节，不得在批准后重新跟随原始路径。
+- 对话文件交接：目标工具参数表声明保留参数 `cindy_handoff_files` 时，`ghost_call.attachments`
+  里的本地非媒体文件不进媒体仓，由 Host 存一份副本到 `owners/<账号>/ghost-handoff/<实例键>/`，
+  插件只收到 `handoff:<uuid>` 引用（`args.cindy_handoff_files`），未声明的工具行为不变。
+  该参数只由 Host 注入，模型或页面自带的同名值一律剥除。限额与配额（4 个／64 MiB／128 MiB；
+  每实例 512 MiB／200 个）在弹卡前判定；确认沿用附件两层策略（lane=`handoff`，不做目录会话
+  记忆，自动放行不写人工授权），落盘的是裁决前读入的字节。副本只能经 `upload.handoff` 出网，
+  或由本卡页面经签发的只读地址读取；插件不能读取字节或删除副本。副本 7 天后由 Host 删除
+  （访问时、启动后延迟及切换账号时清理），用户可在插件详情页逐个删除；卸载删除、换源随
+  归档实例键搬走。Node 工作进程不开放。回归见 `handoffStore.test.ts` 与 `ghostWorkdirGate.test.ts`。
 - 媒体模型接入分成两层：插件声明并封装业务能力，Cindy Core 提供低级目录和调用能力。
   插件设置页／panel 只能通过同源只读 `/media-models?type=image|video` 配置模型；Host 按
   Gateway `mode` 切图片／视频大类，并结合插件 `cindy.image/video` 声明、Gateway

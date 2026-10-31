@@ -388,6 +388,7 @@ const uploaded = await cindy.fetch({
 `as:'library'` 边接收边写 Library 的暂存文件，成功后原子提交；失败不发布半个文件。
 长度未知也可流式接收，单件上限沿用 Library 的 8 GiB，并保留磁盘水位检查。
 `upload.library` 与 `upload.hashes` 二选一，最多 4 个文件，字段及 multipart 规则相同。
+对话交接的副本用 `upload.handoff:['handoff:<uuid>']`，与两者三选一，见 4.10.3。
 
 **一期上传到后端的单件上限为 64 MiB，总量 128 MiB**，媒体和 Library 均如此。
 超限返回 `{ok:false,errorCode:'TOO_LARGE',limitBytes,...}`；更大文件需要流式上传，
