@@ -72,7 +72,7 @@ const tapsvcProvider: ProviderView = {
   },
 };
 
-// Review of #8235: an automation with both a script and a plugin (set by an Agent) opens on the
+// An automation with both a script and a plugin (set by an Agent) opens on the
 // plugin; saving an unrelated edit must keep the script, while choosing the plugin instead of a
 // script must still drop it. Existing cases do not cover the plugin source.
 describe('buildPreRunHook with a plugin source', () => {
