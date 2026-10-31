@@ -40,6 +40,7 @@ import type { PluginMarketItem } from '../../../shared/pluginMarket';
 import { GhostLibrarySection } from './GhostLibrarySection';
 import { GhostHandoffFilesSection } from './GhostHandoffFilesSection';
 import { PluginBackgroundTasksSection } from './PluginBackgroundTasksSection';
+import { PluginControlPointsSection } from './PluginControlPointsSection';
 import { PluginTaskPrefs } from '@/cindy-brain/PluginTaskPrefs';
 import { GhostSettingsWebview } from '@/cindy-brain/GhostSettingsWebview';
 import { WINDOW_NO_DRAG_STYLE } from '@/components/layout/windowDrag';
@@ -55,6 +56,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import {
+  declaredGhostControlPoints,
   ghostDeclaresHiddenTasks,
   ghostToolDeclaresHandoff,
   ghostTrustLabelKey,
@@ -515,6 +517,13 @@ export function GhostPluginDetailView({
           installed={ghost !== null}
           hiddenTasksDeclared={ghostDeclaresHiddenTasks(ghost?.manifest)}
         />
+
+        {ghost && !remote ? (
+          <PluginControlPointsSection
+            ghostId={detail.id}
+            declared={declaredGhostControlPoints(ghost.manifest).length > 0}
+          />
+        ) : null}
 
         {detail.tools.length > 0 ? <ToolsSection tools={detail.tools} /> : null}
 
