@@ -512,7 +512,7 @@ export function FindInPageBar() {
     const focused = document.activeElement;
     previewOpenerRef.current = host && focused instanceof HTMLElement && host.contains(focused)
       ? focused
-      : host;
+      : host?.querySelector<HTMLElement>('button:not(:disabled)') ?? null;
   }, []);
 
   // Keep the single search UI in the foreground document's stacking context.

@@ -421,7 +421,6 @@ export function TextLightbox({ filePath, fileName, initialLine, triggerRef, onCl
       <div
         data-text-lightbox-card
         data-text-lightbox-search-host={renderable.kind === 'markdown' ? '' : undefined}
-        tabIndex={renderable.kind === 'markdown' ? -1 : undefined}
         className={cn(
           'cursor-auto flex flex-col overflow-hidden rounded-xl',
           'border border-[var(--msg-tool-card-border)]',
