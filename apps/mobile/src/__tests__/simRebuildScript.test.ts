@@ -6,7 +6,7 @@ import { mobileClientBundleEnv } from '../../../../scripts/shared/client-endpoin
 import { resolvePnpmInvocation, usablePnpmExecPath } from '../../../../scripts/shared/pnpm-invocation.mjs';
 import { extractMobileDevRegionArgs, withLocalMobileRegionConfig } from '../../scripts/lib/mobile-dev-region.mjs';
 import { extractSimWhoamiUdidArgs, resolveMobileSimulatorBundleId, selectBootedSimulator, findSimulatorDeviceSet, simctlArgs } from '../../scripts/lib/sim-whoami.mjs';
-import { inspectIOSBuildTools, COCOAPODS_SETUP_HINT } from '../../scripts/sim-pod-install.mjs';
+import { inspectIOSBuildTools, withUserGemPodOnPath, COCOAPODS_SETUP_HINT } from '../../scripts/sim-pod-install.mjs';
 
 const source = readFileSync(resolve(process.cwd(), 'scripts/sim-rebuild.mjs'), 'utf8');
 const start = source.indexOf('const iosDir =');
@@ -22,7 +22,7 @@ const udid = '11111111-1111-1111-1111-111111111111';
 async function rebuild(options: {
   args?: string[]; platform?: 'darwin' | 'win32'; cached?: boolean; cachedArch?: string;
   fingerprintFailure?: boolean; metroHealthy?: boolean; builtArch?: string; cindyBooted?: boolean;
-  unavailableTool?: string; toolFailure?: string; nativeMismatch?: boolean;
+  unavailableTool?: string; toolFailure?: string; nativeMismatch?: boolean; podOnlyInUserGem?: boolean;
 } = {}) {
   const cindySet = { name: 'cindy', path: '/home/test/Library/Application Support/BaguetteCindy/devices' };
   const env = { EXPO_PUBLIC_APP_VARIANT: 'beta', npm_execpath: '/tools/pnpm.cjs' };
@@ -31,7 +31,11 @@ async function rebuild(options: {
     platform: options.platform ?? 'darwin', arch: 'arm64', execPath: '/node', exitCode: 0,
     exit(code: number) { throw new Error(`exit:${code}`); },
   };
-  const execFileSync = vi.fn((command: string, args: string[], _opts: object) => {
+  const execFileSync = vi.fn((command: string, args: string[], opts: object) => {
+    if (options.podOnlyInUserGem && command === 'ruby') return '/home/test/.gem/ruby/2.6.0';
+    if (options.podOnlyInUserGem && command === 'pod' && !(opts as { env?: { PATH?: string } }).env?.PATH?.includes('/.gem/ruby/2.6.0/bin')) {
+      throw Object.assign(new Error('spawn pod ENOENT'), { code: 'ENOENT' });
+    }
     if (command === options.unavailableTool) throw Object.assign(new Error('private child output'), { code: options.toolFailure ?? 'ENOENT' });
     if (command === 'pod') return '1.16.2';
     if (command === 'plutil') return args[1] === 'CFBundleIdentifier' ? 'com.xd.cindy' : 'Cindy';
@@ -71,6 +75,7 @@ async function rebuild(options: {
     ensureMobileEnv: () => ({ created: false, addedKeys: [] }), formatMobileEnvStatus: () => '',
     computeSimulatorNativeFingerprint: () => 'native-fingerprint', inspectSimulatorNativeIdentity: ({ appPath }: { appPath: string }) => ({ healthy: !(options.nativeMismatch && appPath.startsWith(cacheRoot)), code: 'native-mismatch' }),
     inspectIOSBuildTools: (opts: object) => inspectIOSBuildTools({ ...opts, run: execFileSync }), COCOAPODS_SETUP_HINT,
+    withUserGemPodOnPath: (opts: object) => withUserGemPodOnPath({ ...opts, run: execFileSync as never, exists: () => true }),
     computeFingerprintReport: (_dir: string, opts: { run: (input: object) => { hash: string } }) => {
       if (options.fingerprintFailure) throw new Error('fingerprint unavailable');
       return { platforms: { ios: opts.run({ binPath: '/fingerprint/cli.js', projectDir: mobileDir, platform: 'ios' }).hash } };
@@ -108,6 +113,15 @@ describe('sim-rebuild workflow', () => {
     expect(receipt).toContain('IOS_BUILD_TOOLS_UNAVAILABLE');
     expect(receipt).toContain('environment-setup.md');
     expect(receipt).not.toContain('private child output');
+  });
+
+  it('builds with a CocoaPods that is only in the user gem directory', async () => {
+    const result = await rebuild({ args: ['--build-only'], podOnlyInUserGem: true });
+    expect(result.error).toEqual(new Error('exit:0'));
+    expect(result.log.mock.calls.flat().join('\n')).not.toContain('IOS_BUILD_TOOLS_UNAVAILABLE');
+    expect(result.podInstallBounded).toHaveBeenCalledOnce();
+    const [{ env }] = result.podInstallBounded.mock.calls[0] as unknown as [{ env: { PATH: string } }];
+    expect(env.PATH.endsWith('/home/test/.gem/ruby/2.6.0/bin')).toBe(true);
   });
 
   it('installs a compatible cache without requiring CocoaPods', async () => {
