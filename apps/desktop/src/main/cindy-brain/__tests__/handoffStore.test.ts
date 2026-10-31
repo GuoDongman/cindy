@@ -99,6 +99,20 @@ describe('GhostHandoffStore', () => {
     expect(await s.folder('other')).toBeNull();
   });
 
+  // Codex 4431682665: the folder is user-visible. A payload renamed or deleted there
+  // drops the entry from the list and frees its quota instead of lingering 7 days.
+  it('drops an entry whose file was renamed or deleted in the folder', async () => {
+    const { root, store: s } = store({ value: Date.now() }, { files: 2, bytes: 1024 });
+    const [renamed, deleted] = await s.import('art', [{ name: 'a.csv', bytes: bytes('1') }, { name: 'b.csv', bytes: bytes('2') }], () => {});
+    const dir = (ref: string) => path.join(root, 'art', ref.slice('handoff:'.length));
+    fs.renameSync(path.join(dir(renamed!.ref), 'a.csv'), path.join(dir(renamed!.ref), 'a-edited.csv'));
+    fs.rmSync(path.join(dir(deleted!.ref), 'b.csv'));
+
+    expect(await s.list('art')).toEqual([]);
+    expect(fs.existsSync(dir(renamed!.ref))).toBe(false);
+    await expect(s.import('art', [{ name: 'c.csv', bytes: bytes('3') }], () => {})).resolves.toHaveLength(1);
+  });
+
   // Isolation: a reference is meaningful only inside the instance it was handed to.
   it('does not open another instance reference', async () => {
     const { store: s } = store({ value: Date.now() });

@@ -144,6 +144,12 @@ export class GhostHandoffStore {
     }
   }
 
+  /** The file the user may rename, delete or edit in Finder / Explorer; anything else makes the entry unreadable. */
+  private async payloadIntact(dir: string, meta: Meta): Promise<boolean> {
+    const stat = await fs.lstat(path.join(dir, meta.id, meta.file)).catch(() => null);
+    return !!stat?.isFile() && stat.size === meta.size;
+  }
+
   private async remove(dir: string, id: string): Promise<boolean> {
     // Rename first: a crash mid-delete leaves a `.tmp/del-*` entry, not half an entry.
     const doomed = path.join(dir, TMP, `del-${randomUUID()}`);
@@ -175,8 +181,10 @@ export class GhostHandoffStore {
     for (const id of names) {
       if (!ID_RE.test(id)) continue;
       const meta = await this.readMeta(dir, id);
-      if (!meta || meta.expiresAt <= this.now()) await this.remove(dir, id).catch(() => {});
-      else files.push(toFile(meta));
+      // A payload renamed or deleted in Finder / Explorer must not keep the entry or its quota.
+      if (!meta || meta.expiresAt <= this.now() || !(await this.payloadIntact(dir, meta))) {
+        await this.remove(dir, id).catch(() => {});
+      } else files.push(toFile(meta));
     }
     return files.sort((a, b) => b.createdAt - a.createdAt);
   }
@@ -293,7 +301,7 @@ export class GhostHandoffStore {
     if (!id) return null;
     const dir = this.instanceDir(instance);
     const meta = await this.readMeta(dir, id);
-    if (!meta || meta.expiresAt <= this.now()) {
+    if (!meta || meta.expiresAt <= this.now() || !(await this.payloadIntact(dir, meta))) {
       await this.remove(dir, id).catch(() => {});
       return null;
     }
