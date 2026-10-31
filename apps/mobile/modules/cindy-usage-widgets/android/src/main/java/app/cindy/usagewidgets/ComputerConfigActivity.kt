@@ -7,18 +7,17 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.content.res.ColorStateList
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
-import android.util.TypedValue
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.View
-import android.widget.CheckBox
-import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
+import android.widget.Switch
 import android.widget.ScrollView
 import android.widget.TextView
 import java.util.Locale
@@ -99,42 +98,87 @@ class ComputerConfigActivity : Activity() {
     private val hidden = WidgetStore.hiddenOf(context, appWidgetId).toMutableList()
     private val accountsBox = LinearLayout(ui).apply { orientation = LinearLayout.VERTICAL }
 
+    private val pal = WidgetPalette(night)
+
     fun show() {
       val content = LinearLayout(ui).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(24), dp(8), dp(24), dp(8))
+        setPadding(dp(22), dp(22), dp(22), dp(6))
+        addView(TextView(ui).apply {
+          text = text("quotaName")
+          textSize = 20f
+          typeface = WidgetPainter.systemFace(Weight.Semibold)
+          setTextColor(pal.ink)
+        })
         addView(header(text("configComputer")))
         addView(computerChoice())
         addView(accountsBox)
       }
       renderAccounts()
-      AlertDialog.Builder(ui)
-        .setTitle(text("quotaName"))
+      val dialog = AlertDialog.Builder(ui)
         .setView(ScrollView(ui).apply { addView(content) })
         .setPositiveButton(text("configDone")) { _, _ -> done(computer, pinned.toList(), hidden.toList()) }
         .setNegativeButton(text("configCancel")) { _, _ -> finish() }
         .setOnCancelListener { finish() }
-        .show()
+        .create()
+      dialog.setOnShowListener {
+        // The widget's own surface and ink, so the settings look like what they configure.
+        dialog.window?.setBackgroundDrawable(shape(pal.background, pal.line, 28, 1))
+        for (which in listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE)) {
+          dialog.getButton(which)?.apply {
+            isAllCaps = false
+            setTextColor(if (which == AlertDialog.BUTTON_POSITIVE) pal.plenty else pal.ink2)
+          }
+        }
+      }
+      dialog.show()
     }
 
+    /** A rounded surface; `stroke` of 0 is no border. */
+    private fun shape(fill: Int, stroke: Int, radius: Int, strokeDp: Int = 1) = GradientDrawable().apply {
+      setColor(fill)
+      cornerRadius = dp(radius).toFloat()
+      if (strokeDp > 0) setStroke(dp(strokeDp), stroke)
+    }
+
+    /** One choice per row: a tile that takes the teal outline and a check when chosen. */
     private fun computerChoice(): View {
       val ids = listOf(WidgetStore.AUTO) + computers.map { it.id }
       val names = listOf(text("sourceAuto")) + computers.map { it.name }
-      return RadioGroup(ui).apply {
+      val box = LinearLayout(ui).apply { orientation = LinearLayout.VERTICAL }
+      fun render() {
+        box.removeAllViews()
         ids.forEachIndexed { index, id ->
-          addView(RadioButton(ui).apply {
-            this.id = View.generateViewId()
-            text = names[index]
-            isChecked = id == computer
-            setOnCheckedChangeListener { _, checked ->
-              if (checked && computer != id) {
+          val chosen = id == computer
+          box.addView(LinearLayout(ui).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(46)
+            setPadding(dp(14), 0, dp(14), 0)
+            background = if (chosen) shape(withAlpha(pal.plenty, 0.10f), pal.plenty, 14, 2) else shape(pal.tile, pal.line, 14, 1)
+            addView(TextView(ui).apply {
+              text = names[index]
+              textSize = 15f
+              setTextColor(pal.ink)
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            if (chosen) addView(TextView(ui).apply {
+              text = "✓"
+              textSize = 16f
+              typeface = WidgetPainter.systemFace(Weight.Semibold)
+              setTextColor(pal.plenty)
+            })
+            setOnClickListener {
+              if (computer != id) {
                 computer = id
+                render()
                 renderAccounts()
               }
             }
-          })
+          }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         }
       }
+      render()
+      return box
     }
 
     /** The chosen computer's accounts, in its order (hidden ones on the computer are not sent). */
@@ -148,9 +192,9 @@ class ComputerConfigActivity : Activity() {
       pinned.forEachIndexed { index, encoded ->
         val key = AccountKey.decode(encoded)
         accountsBox.addView(row(key.logo, key.name) {
-          addView(iconButton(android.R.drawable.arrow_up_float, text("configMoveUp"), index > 0) { move(index, -1) })
-          addView(iconButton(android.R.drawable.arrow_down_float, text("configMoveDown"), index < pinned.size - 1) { move(index, 1) })
-          addView(iconButton(android.R.drawable.ic_menu_close_clear_cancel, text("configRemove"), true) {
+          addView(glyphButton("↑", text("configMoveUp"), index > 0) { move(index, -1) })
+          addView(glyphButton("↓", text("configMoveDown"), index < pinned.size - 1) { move(index, 1) })
+          addView(glyphButton("✕", text("configRemove"), true) {
             pinned.removeAt(index)
             renderAccounts()
           })
@@ -160,28 +204,34 @@ class ComputerConfigActivity : Activity() {
       if (pinned.size < MAX_PINNED && addable.isNotEmpty()) {
         accountsBox.addView(TextView(ui).apply {
           text = "+  " + text("configAdd")
-          setTextColor(resolveColor(android.R.attr.colorAccent))
-          textSize = 15f
-          setPadding(0, dp(10), 0, dp(10))
+          setTextColor(pal.plenty)
+          textSize = 14f
+          typeface = WidgetPainter.systemFace(Weight.Medium)
+          gravity = Gravity.CENTER
+          background = shape(Color.TRANSPARENT, withAlpha(pal.plenty, 0.5f), 14, 1)
           setOnClickListener { pickPinned(addable) }
-        })
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(8) })
       }
       accountsBox.addView(hint(text("configPinnedHint")))
 
       accountsBox.addView(header(text("configHidden")))
       if (sources.isEmpty()) accountsBox.addView(hint(text("noSources")))
       for (source in sources) {
-        accountsBox.addView(CheckBox(ui).apply {
-          text = source.name
-          setCompoundDrawablesRelativeWithIntrinsicBounds(logo(source.logo, source.monogram), null, null, null)
-          compoundDrawablePadding = dp(8)
+        val switch = Switch(ui).apply {
           isChecked = AccountKey.matching(hidden, listOf(source)).isNotEmpty()
+          thumbTintList = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(pal.plenty, pal.ink3),
+          )
+          trackTintList = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(withAlpha(pal.plenty, 0.35f), pal.ink4),
+          )
           setOnCheckedChangeListener { _, checked ->
             // Unchecking also drops the same account saved from another computer.
             hidden.removeAll { AccountKey.matching(listOf(it), listOf(source)).isNotEmpty() }
             if (checked) hidden.add(AccountKey(source).encoded)
           }
-        })
+        }
+        accountsBox.addView(row(source.logo, source.name) { addView(switch) })
       }
     }
 
@@ -202,43 +252,50 @@ class ComputerConfigActivity : Activity() {
         .show()
     }
 
+    /** An account as a tile: its mark and name, then whatever `actions` adds on the right. */
     private fun row(logo: String?, name: String, actions: LinearLayout.() -> Unit) = LinearLayout(ui).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
-      minimumHeight = dp(44)
+      minimumHeight = dp(46)
+      setPadding(dp(14), 0, dp(8), 0)
+      background = shape(pal.tile, pal.line, 14, 1)
       addView(TextView(ui).apply {
         text = name
         textSize = 15f
-        setTextColor(resolveColor(android.R.attr.textColorPrimary))
+        setTextColor(pal.ink)
         setCompoundDrawablesRelativeWithIntrinsicBounds(logo(logo, name.take(1).uppercase()), null, null, null)
         compoundDrawablePadding = dp(10)
       }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
       actions()
+      layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
     }
 
-    private fun iconButton(icon: Int, label: String, enabled: Boolean, onClick: () -> Unit) = ImageButton(ui).apply {
-      setImageResource(icon)
+    private fun glyphButton(glyph: String, label: String, enabled: Boolean, onClick: () -> Unit) = TextView(ui).apply {
+      text = glyph
       contentDescription = label
+      textSize = 16f
+      gravity = Gravity.CENTER
+      setTextColor(pal.ink2)
+      alpha = if (enabled) 1f else 0.25f
       isEnabled = enabled
-      alpha = if (enabled) 1f else 0.3f
-      background = null
-      setColorFilter(resolveColor(android.R.attr.textColorSecondary))
       setOnClickListener { onClick() }
-      layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+      layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
     }
 
     private fun header(label: String) = TextView(ui).apply {
       text = label
-      textSize = 13f
-      setTextColor(resolveColor(android.R.attr.textColorSecondary))
-      setPadding(0, dp(16), 0, dp(4))
+      textSize = 12f
+      typeface = WidgetPainter.systemFace(Weight.Medium)
+      letterSpacing = 0.04f
+      setTextColor(pal.ink3)
+      setPadding(dp(2), dp(20), 0, dp(0))
     }
 
     private fun hint(label: String) = TextView(ui).apply {
       text = label
       textSize = 12f
-      setTextColor(resolveColor(android.R.attr.textColorSecondary))
-      setPadding(0, 0, 0, dp(4))
+      setTextColor(pal.ink3)
+      setPadding(dp(2), dp(8), 0, dp(0))
     }
 
     /** The account's mark, drawn like on the widget, in the dialog's secondary text color. */
@@ -247,14 +304,8 @@ class ComputerConfigActivity : Activity() {
       val size = 20f
       val bitmap = Bitmap.createBitmap((size * density).toInt(), (size * density).toInt(), Bitmap.Config.ARGB_8888)
       val canvas = Canvas(bitmap).apply { scale(density, density) }
-      WidgetPainter(ui, canvas, WidgetPalette(night)).logo(logo, monogram, 0f, 0f, size, resolveColor(android.R.attr.textColorSecondary))
+      WidgetPainter(ui, canvas, pal).logo(logo, monogram, 0f, 0f, size, pal.ink2)
       return BitmapDrawable(ui.resources, bitmap)
-    }
-
-    private fun resolveColor(attr: Int): Int {
-      val value = TypedValue()
-      ui.theme.resolveAttribute(attr, value, true)
-      return if (value.resourceId != 0) ui.getColor(value.resourceId) else value.data
     }
 
     private fun dp(value: Int) = (value * ui.resources.displayMetrics.density).toInt()
