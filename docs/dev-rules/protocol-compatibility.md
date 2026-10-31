@@ -4405,7 +4405,7 @@ Chat Server 请求复用既有消息 `content` 的 media 块及 `threadRootId`�
 device-link 操作、字段或白名单。远程打开在执行端判定：新执行端把 `handoff:` 视为执行电脑文件，
 新旧查看端都收到既有的 `MCP_APP_FILES_LOCAL_ONLY` 提示；Mobile 自带的同名检查同步认 `handoff:`。
 执行端回退到旧版时不认识该前缀，不签发地址也不读字节，页面只看到名称与大小。
-附件列表签发遇到缺失文件改为只去掉地址、View 照常打开；结果与入参中的链接仍严格拒绝。
+附件列表签发遇到缺失文件改为只去掉地址、View 照常打开；结果与入参中的不可用 `handoff:` 链接同样只去掉地址，Library／媒体链接仍严格拒绝。
 确认卡新增 lane `handoff`；旧版 Desktop 远程控制端不认识该 lane 不显示卡片，执行端按超时拒绝，
 不放行。设置页列表与删除只走本机 IPC（`ghosts:handoff-list` / `ghosts:handoff-delete`）。
 回归入口：`handoffStore.test.ts`、`ghostWorkdirGate.test.ts`、`networkSlot.test.ts`、`pluginServer.test.ts`、
