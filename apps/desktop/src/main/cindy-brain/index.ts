@@ -1620,6 +1620,18 @@ async function relocateGhostUserData(
   fromPart: string, toPart: string,
 ): Promise<void> {
   if (fromPart === toPart) return;
+  // Blocked before the idle check: a call cannot store copies after it passed.
+  const unblockHandoff = getGhostHandoffStore().blockForRelocation([fromPart, toPart]);
+  try {
+    await relocateIdleGhostUserData(fromPart, toPart);
+  } finally {
+    unblockHandoff();
+  }
+}
+
+async function relocateIdleGhostUserData(
+  fromPart: string, toPart: string,
+): Promise<void> {
   assertGhostRelocationIdle(fromPart);
   const ownerKey = activeOwnerScopeKey();
   const assertCurrent = (): void => {
@@ -6203,14 +6215,8 @@ export function getGhostNetworkSlot(): GhostNetworkSlot {
         libraryMime: mediaTypeForLibraryPath,
       }).read(id, `library:${relativePath}`, new Request('https://cindy.invalid/', { signal })),
       readHandoffFile: async (id, ref, signal) => {
-        const opened = await getGhostHandoffStore().open(id, ref);
-        if (!opened) return null;
-        try {
-          signal.throwIfAborted();
-          return { bytes: await opened.file.readFile(), name: opened.info.name, mimeType: opened.info.mimeType };
-        } finally {
-          await opened.file.close();
-        }
+        signal.throwIfAborted();
+        return getGhostHandoffStore().read(id, ref);
       },
       getGhost: (id) => {
         const ghost = findGhostForInstanceId(id);

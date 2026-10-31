@@ -70,8 +70,8 @@ export interface NetworkSlotDeps {
   getGhost(id: string): InstalledGhost | null;
   createTransferProgress?(instanceKey: string, callId?: string): (bytes: number | undefined, total: number | undefined, message: string) => void;
   readLibraryFile?(instanceKey: string, path: string, signal: AbortSignal): Promise<Response>;
-  /** Live handoff copy of this instance; null when expired, deleted or never handed over. */
-  readHandoffFile?(instanceKey: string, ref: string, signal: AbortSignal): Promise<{ bytes: Uint8Array; name: string; mimeType: string } | null>;
+  /** Live handoff copy of this instance; null when expired, deleted or never handed over, `changed` when altered on disk. */
+  readHandoffFile?(instanceKey: string, ref: string, signal: AbortSignal): Promise<{ bytes: Uint8Array; name: string; mimeType: string } | 'changed' | null>;
   uploadFileSize?(instanceKey: string, value: string, library: boolean): Promise<number | undefined>;
   saveLibraryStream?(instanceKey: string, input: {
     path: string; source: AsyncIterable<Uint8Array>; totalBytes?: number;
@@ -2013,6 +2013,7 @@ export class GhostNetworkSlot {
       const copy = await this.deps.readHandoffFile!(instanceKey, ref, signal);
       assertCurrent(); signal.throwIfAborted();
       if (!copy) return { error: '交接文件已过期或已被删除,请让用户重新发送', errorCode: GHOST_HANDOFF_UNAVAILABLE };
+      if (copy === 'changed') return { error: '交接文件在交出后被改动,已拒绝上传,请让用户重新发送', errorCode: GHOST_HANDOFF_UNAVAILABLE };
       // Stop as soon as the batch cannot fit instead of holding every copy first.
       handoffBytes += copy.bytes.byteLength;
       if (handoffBytes > GHOST_FETCH_UPLOAD_MAX_TOTAL_BYTES) return { error: '上传文件超出总量上限', limitBytes: GHOST_FETCH_UPLOAD_MAX_TOTAL_BYTES };

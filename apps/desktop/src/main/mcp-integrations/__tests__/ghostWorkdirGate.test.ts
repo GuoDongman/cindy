@@ -4133,6 +4133,19 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
     expect(store.isBusy('art')).toBe(false);
   });
 
+  // During a source change the call is refused before storing anything (Codex 4431230310).
+  it('refuses the handoff while the instance is changing source', async () => {
+    const unblock = store.blockForRelocation(['art']);
+    try {
+      const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('moving.csv', 'x')] });
+      expect(result).toMatchObject({ ok: false, errorCode: 'ATTACHMENT_INVALID' });
+    } finally {
+      unblock();
+    }
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(await store.list('art')).toEqual([]);
+  });
+
   // A call that never succeeds publishes no card; its copies must not fill the quota.
   it('drops the copies when the plugin call fails', async () => {
     dispatchMock.mockResolvedValueOnce({ ok: false, errorCode: 'GHOST_CRASHED', message: 'offline' } as never);

@@ -224,6 +224,27 @@ describe('market Ghost session boundary', () => {
     expect(() => assertGhostRelocationIdle('idle')).not.toThrow();
   });
 
+  // Codex 4431230310: the idle check passes before awaits inside the move, so new
+  // handoffs must be refused for the whole source change. Unit, real wrapper + store.
+  it('refuses new handoff holds from before the idle check until relocation ends', async () => {
+    const { createGhostProductionCallbacks } = await import('./ghostProductionCallbacksFixture.js');
+    const { GhostHandoffStore } = await import('../handoffStore.js');
+    const store = new GhostHandoffStore({ root: () => '/unused' });
+    const during: Array<unknown> = [];
+    const { relocateGhostUserData } = createGhostProductionCallbacks<{
+      relocateGhostUserData(from: string, to: string): Promise<void>;
+    }>({ functions: ['relocateGhostUserData'] })({
+      getGhostHandoffStore: () => store,
+      relocateIdleGhostUserData: async () => {
+        during.push(store.hold('old'), store.hold('archive'));
+        throw new Error('move failed');
+      },
+    });
+    await expect(relocateGhostUserData('old', 'archive')).rejects.toThrow('move failed');
+    expect(during).toEqual([null, null]);
+    expect(store.hold('old')).toBeTypeOf('function');
+  });
+
   it('allows explicit local replacement and detaches market routing before landing', () => {
     const updateStart = source.indexOf(
       "ipcMain.handle('ghosts:update'",

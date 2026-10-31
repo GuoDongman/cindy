@@ -10,6 +10,7 @@ import {
   type GhostHandoffFile,
 } from '../../shared/ghost.js';
 import { mediaTypeForLibraryPath } from './runtime/ghostFiles.js';
+import { readToLength } from '../utils/readBoundedFile.js';
 
 /**
  * Host-owned copies of chat files handed to a plugin (`handoff:<uuid>`).
@@ -94,6 +95,7 @@ function toFile(meta: Meta): GhostHandoffFile {
 export class GhostHandoffStore {
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly holds = new Map<string, number>();
+  private readonly relocating = new Set<string>();
 
   constructor(private readonly deps: { root(): string; now?(): number; quota?: { files: number; bytes: number } }) {}
 
@@ -190,8 +192,10 @@ export class GhostHandoffStore {
   /**
    * A handoff in flight (stored, not yet delivered) holds its instance so a
    * source change waits instead of moving the copies away from the call.
+   * Null while a source change of the instance is in progress.
    */
-  hold(instance: string): () => void {
+  hold(instance: string): (() => void) | null {
+    if (this.relocating.has(instance)) return null;
     this.holds.set(instance, (this.holds.get(instance) ?? 0) + 1);
     let released = false;
     return () => {
@@ -205,6 +209,16 @@ export class GhostHandoffStore {
 
   isBusy(instance: string): boolean {
     return this.holds.has(instance);
+  }
+
+  /**
+   * Source change: refuse new holds before checking `isBusy`, so no call can
+   * store copies between the idle check and the move. Release when it ends.
+   */
+  blockForRelocation(instances: readonly string[]): () => void {
+    const added = [...new Set(instances)].filter((instance) => !this.relocating.has(instance));
+    for (const instance of added) this.relocating.add(instance);
+    return () => { for (const instance of added) this.relocating.delete(instance); };
   }
 
   /** Folder the user can open in Finder / Explorer; null until a copy has been stored. */
@@ -300,6 +314,23 @@ export class GhostHandoffStore {
     } catch {
       await file.close();
       return null;
+    }
+  }
+
+  /**
+   * Bytes of a live copy for upload, never more than its stored size; `changed`
+   * when the file on disk was shortened or grown after it was opened.
+   */
+  async read(instance: string, ref: string): Promise<{ bytes: Buffer; name: string; mimeType: string } | 'changed' | null> {
+    const opened = await this.open(instance, ref);
+    if (!opened) return null;
+    try {
+      const bytes = await readToLength(opened.file, opened.info.size);
+      const after = await opened.file.stat();
+      if (bytes.byteLength !== opened.info.size || after.size !== opened.info.size) return 'changed';
+      return { bytes, name: opened.info.name, mimeType: opened.info.mimeType };
+    } finally {
+      await opened.file.close();
     }
   }
 

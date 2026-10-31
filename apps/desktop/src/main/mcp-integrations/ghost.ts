@@ -2703,6 +2703,9 @@ export function getCindyGhostsMcpDeps(
       const handoffRoot = handoffPrepared ? getGhostHandoffStore().currentRoot() : '';
       // Held from storing until dispatch settles: a source change waits for this call.
       const releaseHandoff = handoffPrepared ? getGhostHandoffStore().hold(instanceId) : () => {};
+      if (!releaseHandoff) {
+        return { ok: false, errorCode: 'ATTACHMENT_INVALID', message: '插件正在更换来源,文件未交出,请稍后重试' };
+      }
       if (handoffPrepared) {
         try {
           handoffFiles = await getGhostHandoffStore().import(instanceId, handoffPrepared.files, () => {

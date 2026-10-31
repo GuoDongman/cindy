@@ -2394,12 +2394,7 @@ describe('Handoff file upload', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ghost-handoff-upload-'));
   const store = new GhostHandoffStore({ root: () => root });
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
-  const readHandoffFile: NetworkSlotDeps['readHandoffFile'] = async (id, ref) => {
-    const opened = await store.open(id, ref);
-    if (!opened) return null;
-    try { return { bytes: await opened.file.readFile(), name: opened.info.name, mimeType: opened.info.mimeType }; }
-    finally { await opened.file.close(); }
-  };
+  const readHandoffFile: NetworkSlotDeps['readHandoffFile'] = (id, ref) => store.read(id, ref);
   const [copy] = await store.import('web-search', [{ name: '销售.csv', bytes: new TextEncoder().encode('a,b') }], () => {});
   const upload = (value: Record<string, unknown>) => ({ url: 'https://api.search.brave.com/upload', method: 'POST', upload: value });
 
@@ -2414,6 +2409,26 @@ describe('Handoff file upload', async () => {
     const { slot, fetchImpl } = makeSlot({ readHandoffFile });
     expect(await slot.handleFetchRequest('other', upload({ handoff: [copy!.ref] }))).toMatchObject({ ok: false, errorCode: 'HANDOFF_UNAVAILABLE' });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  // Codex 4431420859: the copy folder is user-visible, so its file can change after
+  // opening. Uploads read at most the stored size and refuse a grown or shortened copy.
+  it('refuses a copy that grows or shrinks after it was opened', async () => {
+    for (const change of ['grow', 'shrink'] as const) {
+      const [changed] = await store.import('web-search', [{ name: `${change}.csv`, bytes: new TextEncoder().encode('1,2') }], () => {});
+      const file = path.join(root, 'web-search', changed!.ref.slice('handoff:'.length), `${change}.csv`);
+      const editing = new (class extends GhostHandoffStore {
+        override async open(instance: string, ref: string) {
+          const opened = await super.open(instance, ref);
+          if (change === 'grow') fs.appendFileSync(file, 'x'.repeat(4096));
+          else fs.truncateSync(file, 1);
+          return opened;
+        }
+      })({ root: () => root });
+      const { slot, fetchImpl } = makeSlot({ readHandoffFile: (id, ref) => editing.read(id, ref) });
+      expect(await slot.handleFetchRequest('web-search', upload({ handoff: [changed!.ref] })))
+        .toMatchObject({ ok: false, errorCode: 'HANDOFF_UNAVAILABLE' });
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
   });
   it('accepts exactly one upload source', async () => {
     const { slot, fetchImpl } = makeSlot({ readHandoffFile });
