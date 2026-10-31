@@ -576,8 +576,8 @@ export function TeammatesSection() {
                         'relative isolate flex h-12 w-12 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       )}
                     >
-                      {/* 选中:头像下垫一块与展开选中行同色的 56px 圆角底板;不画贴形线圈,群头像叠放也不被切。 */}
-                      {selected ? <span aria-hidden data-teammate-selected className="absolute -inset-1 -z-10 rounded-[14px] bg-sidebar-item-active" /> : null}
+                      {/* 选中:头像下垫一块与展开选中行同色、同 12px 容器圆角的 56px 底板;不画贴形线圈,群头像叠放也不被切。 */}
+                      {selected ? <span aria-hidden data-teammate-selected className="absolute -inset-1 -z-10 rounded-xl bg-sidebar-item-active" /> : null}
                       {entry.kind === 'group' ? (
                         <BotGroupSidebarAvatar members={entry.group.members} compact />
                       ) : (entry.kind === 'cindy' ? currentCindy?.bot : entry.bot) ? (
