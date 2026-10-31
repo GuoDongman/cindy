@@ -37,6 +37,7 @@ object WidgetRenderer {
   fun render(
     context: Context, kind: WidgetKind, state: WidgetState, widthDp: Float, heightDp: Float, density: Float, dark: Boolean,
     nowMs: Long = System.currentTimeMillis(), family: WidgetFamily = WidgetFamily.of(widthDp, heightDp),
+    pinnedCount: Int = 0,
   ): Bitmap {
     val pxWidth = max(1, (widthDp * density).roundToInt())
     val pxHeight = max(1, (heightDp * density).roundToInt())
@@ -52,7 +53,7 @@ object WidgetRenderer {
     val corner = cornerRadiusDp(context) / scale
     drawBackdrop(painter, palette, width, height, corner)
     canvas.clipPath(Path().apply { addRoundRect(RectF(0f, 0f, width, height), corner, corner, Path.Direction.CW) })
-    val scene = Scene(painter, palette, WidgetFormat(context, state.snapshotOrNull, nowMs), width, height, family)
+    val scene = Scene(painter, palette, WidgetFormat(context, state.snapshotOrNull, nowMs), width, height, family, pinnedCount)
     when (kind) {
       WidgetKind.Quota -> scene.quota(state)
       WidgetKind.Usage -> scene.usage(state)
@@ -81,6 +82,8 @@ object WidgetRenderer {
 
   private class Scene(
     val p: WidgetPainter, val pal: WidgetPalette, val f: WidgetFormat, val w: Float, val h: Float, val family: WidgetFamily,
+    /** Leading sources the widget's settings placed first; the narrow layouts keep them as placed. */
+    val pinnedCount: Int = 0,
   ) {
     fun sys(size: Float, color: Int, weight: Weight = Weight.Regular) = TextStyle(size, color, weight)
     fun num(size: Float, color: Int, weight: Weight = Weight.Semibold) = TextStyle(size, color, weight, barlow = true)
@@ -139,7 +142,17 @@ object WidgetRenderer {
         val liquid = if (fraction > 0) max(3f, fraction * well.height()) else 0f
         if (liquid > 0) {
           p.clipped(well, max(0f, radius - inset)) {
-            p.fillRect(RectF(well.left, well.bottom - liquid, well.right, well.bottom), 0f, tint ?: pal.plenty)
+            // The surface's corners are softly rounded (4dp, less for a very low level) rather
+            // than a hard flat edge, as on iPhone; the well's rounded bottom still shapes low levels.
+            val surface = min(4f, liquid / 2)
+            val shape = Path().apply {
+              addRoundRect(
+                RectF(well.left, well.bottom - liquid, well.right, well.bottom),
+                floatArrayOf(surface, surface, surface, surface, 0f, 0f, 0f, 0f),
+                Path.Direction.CW,
+              )
+            }
+            p.fillPath(shape, tint ?: pal.plenty)
           }
         }
         if (s.emphasized) p.borderRect(rect, radius, 1f, pal.ink2) else p.borderRect(rect, radius, 0.5f, pal.ink4)
@@ -247,8 +260,7 @@ object WidgetRenderer {
 
     /** One row: each source is a short tube with its number, name and reset time stacked beside it. */
     private fun quotaStrip(sources: List<WidgetSource>) {
-      val subscriptions = sources.filter { it.kind == "subscription" }
-      val pool = if (subscriptions.isEmpty()) sources else subscriptions
+      val pool = subscriptionsFirst(sources)
       val pad = 10f
       val count = ((w - 2 * pad) / 66f).toInt().coerceIn(1, 6).coerceAtMost(pool.size)
       val list = pool.take(count)
@@ -284,13 +296,21 @@ object WidgetRenderer {
       }
     }
 
+    /**
+     * The narrow layouts' pick: accounts the widget placed first as placed, then subscriptions
+     * (the Cindy balance is not a subscription), or every other source when there are none.
+     */
+    private fun subscriptionsFirst(sources: List<WidgetSource>): List<WidgetSource> {
+      val rest = sources.drop(pinnedCount)
+      val subscriptions = rest.filter { it.kind == "subscription" }
+      return sources.take(pinnedCount) + (if (subscriptions.isEmpty()) rest else subscriptions)
+    }
+
     private fun quotaColumns(sources: List<WidgetSource>) {
       when (family) {
         WidgetFamily.Strip -> quotaStrip(sources)
         WidgetFamily.Small -> {
-          // Subscriptions first; the Cindy balance is not a subscription.
-          val subscriptions = sources.filter { it.kind == "subscription" }
-          val list = (if (subscriptions.isEmpty()) sources else subscriptions).take(4)
+          val list = subscriptionsFirst(sources).take(4)
           val stale = f.staleLabel(6.0)
           var top = 13f
           if (stale != null) top += staleLine(stale, 8f, 13f, w - 16f) + 4f

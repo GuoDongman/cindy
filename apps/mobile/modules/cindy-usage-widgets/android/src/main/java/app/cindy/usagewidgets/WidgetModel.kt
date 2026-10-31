@@ -81,16 +81,48 @@ class WidgetUsage(json: JSONObject) {
   val models: List<WidgetModel>? = json.optJSONArray("models")?.objects()?.map(::WidgetModel)
 }
 
-class WidgetSnapshot(json: JSONObject) {
+class WidgetSnapshot(private val json: JSONObject, sources: List<WidgetSource>? = null) {
   val generatedAtMs: Double = json.optDouble("generatedAtMs", 0.0)
   val updatedAtMs: Double? = if (json.has("updatedAtMs") && !json.isNull("updatedAtMs")) json.getDouble("updatedAtMs") else null
   val locale: String = json.optString("locale", "en")
   val moneySymbol: String = json.optString("moneySymbol", "$")
-  val sources: List<WidgetSource> = json.optJSONArray("sources").objects().map(::WidgetSource)
+  val sources: List<WidgetSource> = sources ?: json.optJSONArray("sources").objects().map(::WidgetSource)
   val usage: WidgetUsage = WidgetUsage(json.getJSONObject("usage"))
   val strings: Map<String, String> = json.optJSONObject("strings")?.let { strings ->
     strings.keys().asSequence().associateWith { strings.getString(it) }
   } ?: emptyMap()
+
+  fun withSources(sources: List<WidgetSource>) = WidgetSnapshot(json, sources)
+}
+
+/**
+ * A chosen account as a widget stores it: the source id, logo and name in one string, the same
+ * format as `AccountKey` in the iOS widget. Each computer names its own connections, so the same
+ * subscription can have another id there; the logo and name find it.
+ */
+class AccountKey(val id: String, val logo: String?, val name: String) {
+  constructor(source: WidgetSource) : this(source.id, source.logo, source.name)
+
+  val encoded: String get() = listOf(id, logo ?: "", name).joinToString(SEPARATOR)
+
+  companion object {
+    private const val SEPARATOR = "\u001F"
+
+    fun decode(encoded: String): AccountKey {
+      val parts = encoded.split(SEPARATOR)
+      return AccountKey(parts[0], parts.getOrNull(1)?.ifEmpty { null }, if (parts.size > 2) parts.drop(2).joinToString(SEPARATOR) else "")
+    }
+
+    /** The sources the keys name, in key order and each once. */
+    fun matching(keys: List<String>, sources: List<WidgetSource>): List<WidgetSource> {
+      val found = mutableListOf<WidgetSource>()
+      for (key in keys.map(::decode)) {
+        val open = sources.filter { source -> found.none { it.id == source.id } }
+        (open.firstOrNull { it.id == key.id } ?: open.firstOrNull { it.logo == key.logo && it.name == key.name })?.let(found::add)
+      }
+      return found
+    }
+  }
 }
 
 sealed class WidgetState {
@@ -99,6 +131,22 @@ sealed class WidgetState {
   object Empty : WidgetState()
 
   val snapshotOrNull: WidgetSnapshot? get() = (this as? Snapshot)?.snapshot
+
+  /**
+   * The quota widget's arrangement, like the Mac menu bar's settings: pinned accounts first in
+   * their order, hidden ones left out, the rest (accounts added later included) after them in the
+   * computer's order. Null when it changes nothing; hiding every account shows them all.
+   */
+  fun arranged(pinned: List<String>, hidden: List<String>): Pair<WidgetState, Int>? {
+    if (this !is Snapshot) return null
+    val sources = snapshot.sources
+    val hiddenIds = AccountKey.matching(hidden, sources).map { it.id }.toSet()
+    val first = AccountKey.matching(pinned, sources).filter { it.id !in hiddenIds }
+    val firstIds = first.map { it.id }.toSet()
+    val shown = first + sources.filter { it.id !in hiddenIds && it.id !in firstIds }
+    if ((first.isEmpty() && hiddenIds.isEmpty()) || shown.isEmpty()) return null
+    return Snapshot(receivedAtMs, deviceName, snapshot.withSources(shown)) to first.size
+  }
 
   companion object {
     fun parse(json: JSONObject?): WidgetState {
@@ -161,7 +209,26 @@ class WidgetStore(json: JSONObject) {
     }
 
     fun forget(context: Context, appWidgetId: Int) {
-      prefs(context).edit().remove("computer.$appWidgetId").apply()
+      prefs(context).edit().remove("computer.$appWidgetId").remove("pinned.$appWidgetId").remove("hidden.$appWidgetId").apply()
+    }
+
+    /** Accounts the quota widget places first ([AccountKey] strings, in order). */
+    fun pinnedOf(context: Context, appWidgetId: Int): List<String> = keys(context, "pinned.$appWidgetId")
+
+    /** Accounts the quota widget leaves out ([AccountKey] strings). */
+    fun hiddenOf(context: Context, appWidgetId: Int): List<String> = keys(context, "hidden.$appWidgetId")
+
+    fun setAccounts(context: Context, appWidgetId: Int, pinned: List<String>, hidden: List<String>) {
+      prefs(context).edit()
+        .putString("pinned.$appWidgetId", JSONArray(pinned).toString())
+        .putString("hidden.$appWidgetId", JSONArray(hidden).toString())
+        .apply()
+    }
+
+    private fun keys(context: Context, name: String): List<String> = try {
+      JSONArray(prefs(context).getString(name, null) ?: "[]").strings()
+    } catch (_: Exception) {
+      emptyList()
     }
 
     /** Tells the app this computer has a widget, so it asks it on each refresh. */

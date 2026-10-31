@@ -397,7 +397,10 @@ App Group 里存每台电脑最近一次的快照和「自动」所选电脑（�
 都由模块自己的 `AndroidManifest.xml` 合并进应用，不经 config plugin。数据通道、快照格式与「自动 / 固定电脑」规则与 iOS
 相同（`UsageWidgetBridge` 两端共用，`readSnapshot` / `writeSnapshot` / `readPinnedDeviceIds` / `clearSnapshot` 同名）：
 快照存在应用私有的 `noBackupFilesDir/usage-widget-snapshot.json`（不进自动备份），组件选中的电脑与记录的固定电脑在
-SharedPreferences `cindy-usage-widgets`。
+SharedPreferences `cindy-usage-widgets`。「订阅余量」的设置页另有「排在前面的账号」（最多 7 个，可上移、下移、移除）与
+「隐藏的账号」，与 iOS 编辑页、Mac 菜单栏设置同一规则：排在前面的先显示，其余账号（含以后新加的）按电脑顺序跟在后面，隐藏的不显示，
+全部隐藏时照常显示全部；按组件存在同一 SharedPreferences（`pinned.<id>` / `hidden.<id>`，与 iOS 相同的 `AccountKey` 字符串，
+按 id 找不到时按同一图标与名字匹配）。换电脑不清空这两项。液面顶角与 iOS 一样是 4dp 圆角。
 
 组件内容由 `WidgetRenderer` 按启动器格子的实际尺寸直接画成位图（版式与 iOS 的小 / 中 / 大一致，格子比 iOS 尺寸小时整体
 等比缩小，大时靠弹性空白撑开），浅 / 深两套都画好，由 `layout` 与 `layout-night` 选择可见的一张，所以系统切换深浅色不需要

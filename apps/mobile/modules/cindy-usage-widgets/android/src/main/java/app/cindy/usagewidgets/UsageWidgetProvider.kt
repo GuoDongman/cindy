@@ -92,7 +92,14 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
       val options = manager.getAppWidgetOptions(appWidgetId)
       val computer = WidgetStore.computerOf(context, appWidgetId)
       if (computer != WidgetStore.AUTO) WidgetStore.recordPin(context, computer)
-      val state = WidgetStore.loadState(context, computer)
+      val loaded = WidgetStore.loadState(context, computer)
+      val arranged = if (kind == WidgetKind.Quota) {
+        loaded.arranged(WidgetStore.pinnedOf(context, appWidgetId), WidgetStore.hiddenOf(context, appWidgetId))
+      } else {
+        null
+      }
+      val state = arranged?.first ?: loaded
+      val pinnedCount = arranged?.second ?: 0
       val now = System.currentTimeMillis()
       // Android 12+ lists every size the launcher may show (portrait / landscape, folded / unfolded): one
       // drawing per size, and the launcher picks. Older systems only give a min/max range of the current
@@ -104,20 +111,22 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
       }
       val views = if (!sizes.isNullOrEmpty()) {
         val distinct = sizes.distinctBy { "${it.width.toInt()}x${it.height.toInt()}" }.take(4)
-        RemoteViews(distinct.associateWith { buildViews(context, kind, state, it.width, it.height, distinct.size, now) })
+        RemoteViews(distinct.associateWith { buildViews(context, kind, state, it.width, it.height, distinct.size, now, pinnedCount) })
       } else {
         val landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val width = (if (landscape) options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH) else options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH))
           .takeIf { it > 0 }?.toFloat() ?: 160f
         val height = (if (landscape) options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) else options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT))
           .takeIf { it > 0 }?.toFloat() ?: 160f
-        buildViews(context, kind, state, width, height, 1, now)
+        buildViews(context, kind, state, width, height, 1, now, pinnedCount)
       }
       manager.updateAppWidget(appWidgetId, views)
     }
 
     /** One drawing at one size: both themes as bitmaps, kept under the launcher's memory budget for `sharedBy` sizes. */
-    private fun buildViews(context: Context, kind: WidgetKind, state: WidgetState, width: Float, height: Float, sharedBy: Int, now: Long): RemoteViews {
+    private fun buildViews(
+      context: Context, kind: WidgetKind, state: WidgetState, width: Float, height: Float, sharedBy: Int, now: Long, pinnedCount: Int,
+    ): RemoteViews {
       val metrics = context.resources.displayMetrics
       var density = metrics.density
       // A remote bitmap above the launcher's memory budget is rejected (two per size are sent, one per theme).
@@ -126,7 +135,7 @@ abstract class UsageWidgetProviderBase(private val kind: WidgetKind) : AppWidget
       val views = RemoteViews(context.packageName, R.layout.cindy_usage_widget)
       val description = describe(context, kind, state)
       for ((dark, id) in listOf(false to R.id.cindy_usage_widget_image, true to R.id.cindy_usage_widget_image_dark)) {
-        views.setImageViewBitmap(id, WidgetRenderer.render(context, kind, state, width, height, density, dark, now))
+        views.setImageViewBitmap(id, WidgetRenderer.render(context, kind, state, width, height, density, dark, now, pinnedCount = pinnedCount))
         views.setContentDescription(id, description)
       }
       openAppIntent(context)?.let { views.setOnClickPendingIntent(R.id.cindy_usage_widget_root, it) }
