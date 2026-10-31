@@ -43,7 +43,11 @@ vi.mock('@/cindy-brain/GhostSettingsWebview', () => ({
 }));
 
 // The shared-quota rail observes auth; this component fixture has no auth host.
-vi.mock('@/contexts/AuthContext', () => ({ useOptionalAuthUser: () => null }));
+const ownerGeneration = vi.hoisted(() => ({ value: 1 }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useOptionalAuthUser: () => null,
+  useOptionalDataOwnerGeneration: () => ownerGeneration.value,
+}));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -1314,4 +1318,23 @@ it('deletes one handed-over file only after confirmation', async () => {
   await waitFor(() => expect(screen.queryByText('first.csv')).toBeNull());
   expect(handoffDelete).toHaveBeenCalledExactlyOnceWith('art', first.ref);
   expect(screen.getByText('second.csv')).toBeTruthy();
+});
+
+// Copies are account data: an account switch with the same instance id reloads the list.
+it('reloads handed-over files when the data owner changes', async () => {
+  const { ConfirmDialogProvider } = await import('@/components/ui/confirm-dialog-provider');
+  const { GhostHandoffFilesSection } = await import('../GhostHandoffFilesSection');
+  const file = (name: string) => ({ ref: 'handoff:00000000-0000-4000-8000-000000000009', name, mimeType: 'text/csv', size: 1, sha256: 'a'.repeat(64), createdAt: 1, expiresAt: 2 });
+  const handoffList = vi.fn().mockResolvedValueOnce([file('owner-a.csv')]).mockResolvedValue([file('owner-b.csv')]);
+  Object.assign(window.electronAPI, { ghosts: { handoffList, handoffDelete: vi.fn() } });
+  const view = (
+    <ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>
+  );
+  ownerGeneration.value = 1;
+  const { rerender } = render(view);
+  await screen.findByText('owner-a.csv');
+  ownerGeneration.value = 2;
+  rerender(<ConfirmDialogProvider><GhostHandoffFilesSection ghostId="art" declared /></ConfirmDialogProvider>);
+  await screen.findByText('owner-b.csv');
+  expect(screen.queryByText('owner-a.csv')).toBeNull();
 });

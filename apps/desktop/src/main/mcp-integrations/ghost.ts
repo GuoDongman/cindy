@@ -1117,7 +1117,7 @@ function withoutHandoffArg(args: Record<string, unknown>): Record<string, unknow
  * no final link, and after opening the path must still be that same file at
  * the same real path (a swapped parent directory changes the real path).
  */
-async function readClassifiedFile(realPath: string): Promise<Uint8Array | null> {
+async function readClassifiedFile(realPath: string): Promise<Uint8Array | 'too-large' | null> {
   let handle: fs.promises.FileHandle;
   try {
     handle = await fs.promises.open(realPath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
@@ -1129,7 +1129,16 @@ async function readClassifiedFile(realPath: string): Promise<Uint8Array | null> 
     const current = await fs.promises.lstat(realPath, { bigint: true });
     if (!opened.isFile() || opened.dev !== current.dev || opened.ino !== current.ino ||
         (await fs.promises.realpath(realPath)) !== realPath) return null;
-    return await handle.readFile();
+    // Bounded by the opened size: a file that grows after classification is not read past the cap.
+    if (opened.size > BigInt(GHOST_HANDOFF_MAX_BYTES_PER_FILE)) return 'too-large';
+    const bytes = Buffer.alloc(Number(opened.size));
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
+      if (bytesRead === 0) return null;
+      offset += bytesRead;
+    }
+    return bytes;
   } catch {
     return null;
   } finally {
@@ -1198,7 +1207,7 @@ async function prepareHandoffAttachments(params: {
   for (const c of candidates) {
     const bytes = await readClassifiedFile(c.absPath);
     if (!bytes) return { ok: false, message: `附件读取失败:${c.name}(文件不可读或已被移动)` };
-    if (bytes.byteLength > GHOST_HANDOFF_MAX_BYTES_PER_FILE) {
+    if (bytes === 'too-large' || bytes.byteLength > GHOST_HANDOFF_MAX_BYTES_PER_FILE) {
       return { ok: false, message: `文件过大(${c.name}):单个文件上限 ${GHOST_HANDOFF_MAX_BYTES_PER_FILE / 1024 / 1024} MB` };
     }
     // Files can grow between stat and read: the batch cap applies to the bytes actually read.
@@ -2690,11 +2699,13 @@ export function getCindyGhostsMcpDeps(
       }
       if (handoffExpired()) return handoffDenied;
       // 交接副本最后落盘:前面任何一道闸失败都不留副本、不占配额。
+      // Cleanup uses the owner root the copies were written under, not the current account.
+      const handoffRoot = handoffPrepared ? getGhostHandoffStore().currentRoot() : '';
       if (handoffPrepared) {
         try {
           handoffFiles = await getGhostHandoffStore().import(instanceId, handoffPrepared.files, () => {
             if (handoffExpired()) throw new Error(GRANT_AUTHORIZATION_CHANGED_MESSAGE);
-          });
+          }, handoffRoot);
         } catch (error) {
           if (handoffExpired()) return handoffDenied;
           return {
@@ -2705,7 +2716,7 @@ export function getCindyGhostsMcpDeps(
         }
         // The final rename can race an approval change: re-check and drop the new copies.
         if (handoffExpired()) {
-          for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref).catch(() => false);
+          for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref, handoffRoot).catch(() => false);
           return handoffDenied;
         }
         mergedArgs = { ...mergedArgs, [GHOST_HANDOFF_FILES_ARG]: handoffFiles };
@@ -2739,7 +2750,7 @@ export function getCindyGhostsMcpDeps(
       // A failed call publishes no card, so its copies could never be used: drop them
       // instead of letting retries against a broken plugin fill the quota.
       const discardHandoff = async () => {
-        for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref).catch(() => false);
+        for (const file of handoffFiles) await getGhostHandoffStore().delete(instanceId, file.ref, handoffRoot).catch(() => false);
       };
       let result: Awaited<ReturnType<ReturnType<typeof getGhostPipeDispatcher>['callGhostTool']>>;
       try {

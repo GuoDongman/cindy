@@ -4,12 +4,14 @@
  * 列出宿主为该插件保存的对话文件副本(7 天后自动删除),逐个删除前确认。
  * 只在有副本或有工具声明接收时渲染;不显示本机路径。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, RefreshCw } from 'lucide-react';
 
 import { useConfirmDialog } from '@/components/ui/confirm-dialog-provider';
+import { Button } from '@/components/ui/button';
 import { Tip } from '@/components/ui/tooltip';
+import { useOptionalDataOwnerGeneration } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import type { GhostHandoffFile } from '../../../shared/ghost';
@@ -17,8 +19,6 @@ import type { GhostHandoffFile } from '../../../shared/ghost';
 const SECTION_CLASS = 'mt-10';
 const SURFACE_CLASS =
   'border border-[color-mix(in_srgb,var(--border-default)_72%,transparent)] bg-[color-mix(in_srgb,var(--surface-elevated)_82%,var(--surface))]';
-const ICON_BUTTON_CLASS =
-  'text-13 font-medium text-[var(--accent)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]';
 const DANGER_BUTTON_CLASS =
   'shrink-0 text-13 font-medium text-[var(--error-fg)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -32,19 +32,27 @@ function formatBytes(bytes: number): string {
 export function GhostHandoffFilesSection({ ghostId, declared }: { ghostId: string; declared: boolean }) {
   const [files, setFiles] = useState<GhostHandoffFile[] | null>(null);
   const [failed, setFailed] = useState(false);
+  // Copies are account data: reload on an account switch and ignore late answers.
+  const ownerGeneration = useOptionalDataOwnerGeneration();
+  const request = useRef(0);
 
   const refresh = useCallback(async () => {
+    const current = ++request.current;
     try {
-      setFiles(await window.electronAPI.ghosts.handoffList(ghostId));
+      const next = await window.electronAPI.ghosts.handoffList(ghostId);
+      if (current !== request.current) return;
+      setFiles(next);
       setFailed(false);
     } catch {
-      setFailed(true);
+      if (current === request.current) setFailed(true);
     }
   }, [ghostId]);
 
   useEffect(() => {
+    setFiles(null);
+    setFailed(false);
     void refresh();
-  }, [refresh]);
+  }, [refresh, ownerGeneration]);
 
   // 不接收交接的插件只在仍有副本时显示;声明接收的插件读取失败要说明。
   if (!declared && (failed || !files?.length)) return null;
@@ -97,14 +105,16 @@ function HandoffFilesBody({
           {t('settings.ghosts.handoff.title')}
         </h3>
         <Tip text={t('settings.ghosts.handoff.refresh')}>
-          <button
-            type="button"
-            className={ICON_BUTTON_CLASS}
+          <Button
+            variant="secondary"
+            tone="quiet"
+            size="sm"
+            className="w-7 p-0"
             onClick={() => void refresh()}
             aria-label={t('settings.ghosts.handoff.refresh')}
           >
             <RefreshCw size={14} aria-hidden="true" />
-          </button>
+          </Button>
         </Tip>
       </div>
       <p className="mt-2 max-w-[760px] text-13 text-[var(--text-secondary)]">{t('settings.ghosts.handoff.description')}</p>

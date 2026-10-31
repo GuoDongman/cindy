@@ -60,6 +60,17 @@ describe('GhostHandoffStore', () => {
     expect((await s.list('art')).map((file) => file.ref)).toEqual([kept!.ref]);
   });
 
+  // An ordinary failure mid-batch leaves neither copies nor staging behind.
+  it('removes the staging directory of a batch that fails before publishing', async () => {
+    const { root, store: s } = store({ value: Date.now() });
+    let checks = 0;
+    await expect(s.import('art', [{ name: 'a.csv', bytes: bytes('x') }], () => {
+      if (++checks === 2) throw new Error('authorization changed');
+    })).rejects.toThrow('authorization changed');
+    expect(fs.readdirSync(path.join(root, 'art', '.tmp'))).toEqual([]);
+    expect(await s.list('art')).toEqual([]);
+  });
+
   // Isolation: a reference is meaningful only inside the instance it was handed to.
   it('does not open another instance reference', async () => {
     const { store: s } = store({ value: Date.now() });

@@ -155,22 +155,29 @@ export class GhostHandoffStore {
     }
   }
 
+  /** The owner root now; callers that clean up later keep it so an account switch cannot redirect them. */
+  currentRoot(): string {
+    return this.deps.root();
+  }
+
   /** Store approved bytes as one batch: either every copy becomes visible or none stays. */
   async import(
     instance: string,
     files: ReadonlyArray<{ name: string; bytes: Uint8Array }>,
     assertCurrent: () => void,
+    root = this.deps.root(),
   ): Promise<GhostHandoffFile[]> {
-    const dir = this.instanceDir(instance);
+    const dir = this.instanceDir(instance, root);
     return this.exclusive(instance, async () => {
       await this.assertQuota(instance, files.map((file) => file.bytes.byteLength), dir);
       await fs.mkdir(path.join(dir, TMP), { recursive: true, mode: 0o700 });
       const imported: Meta[] = [];
+      let staging: string | undefined;
       try {
         for (const file of files) {
           assertCurrent();
           const id = randomUUID();
-          const staging = path.join(dir, TMP, id);
+          staging = path.join(dir, TMP, id);
           await fs.mkdir(staging, { mode: 0o700 });
           const createdAt = this.now();
           const name = displayName(file.name);
@@ -191,10 +198,13 @@ export class GhostHandoffStore {
           await fsyncDir(staging);
           assertCurrent();
           await fs.rename(staging, path.join(dir, id));
+          staging = undefined;
           imported.push(meta);
         }
         await fsyncDir(dir);
       } catch (error) {
+        // Only a crash leaves staging for the sweep; an ordinary failure cleans up now.
+        if (staging) await fs.rm(staging, { recursive: true, force: true }).catch(() => {});
         for (const meta of imported) await this.remove(dir, meta.id).catch(() => {});
         throw error;
       }
@@ -234,10 +244,10 @@ export class GhostHandoffStore {
     }
   }
 
-  async delete(instance: string, ref: string): Promise<boolean> {
+  async delete(instance: string, ref: string, root = this.deps.root()): Promise<boolean> {
     const id = GHOST_HANDOFF_REF_RE.exec(ref)?.[1];
     if (!id) return false;
-    const dir = this.instanceDir(instance);
+    const dir = this.instanceDir(instance, root);
     return this.exclusive(instance, () => this.remove(dir, id));
   }
 

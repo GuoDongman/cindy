@@ -4089,6 +4089,38 @@ describe('对话文件交接(cindy_handoff_files)', async () => {
     expect(await store.list('art')).toEqual([]);
   });
 
+  // A file that grew past the cap after classification is not read into memory.
+  it('rejects a file that grew past the cap after classification', async () => {
+    const grown = path.join(outsideDir, 'grown.csv');
+    fs.writeFileSync(grown, '');
+    fs.truncateSync(grown, 64 * 1024 * 1024 + 1);
+    classifyLocalAttachmentPathMock.mockImplementation((...args: Parameters<typeof realClassify>) => {
+      const result = realClassify(...args);
+      return 'size' in result ? { ...result, kind: 'inside-workdir', size: 1 } : result;
+    });
+    const result = await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [grown] });
+    expect(result).toMatchObject({ ok: false, errorCode: 'ATTACHMENT_INVALID', message: expect.stringContaining('文件过大') });
+    expect(await store.list('art')).toEqual([]);
+  });
+
+  // Cleanup after an account switch still deletes under the account that stored the copies.
+  it('discards failed-call copies under the owner root they were written to', async () => {
+    const first = path.join(tmpUserData, `ghost-handoff-owner-a-${++root}`);
+    let current = first;
+    store = new GhostHandoffStore({ root: () => current });
+    handoffHolder.store = store;
+    const write = store.import.bind(store);
+    vi.spyOn(store, 'import').mockImplementation(async (...args) => {
+      const files = await write(...args);
+      current = path.join(tmpUserData, `ghost-handoff-owner-b-${root}`);
+      return files;
+    });
+    dispatchMock.mockResolvedValueOnce({ ok: false, errorCode: 'GHOST_CRASHED', message: 'offline' } as never);
+    await makeDeps().callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [csv('switch.csv', 'x')] });
+    current = first;
+    expect(await store.list('art')).toEqual([]);
+  });
+
   // A call that never succeeds publishes no card; its copies must not fill the quota.
   it('drops the copies when the plugin call fails', async () => {
     dispatchMock.mockResolvedValueOnce({ ok: false, errorCode: 'GHOST_CRASHED', message: 'offline' } as never);
