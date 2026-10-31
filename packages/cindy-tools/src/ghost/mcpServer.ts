@@ -1357,7 +1357,7 @@ export function createCindyGhostsMcpServer(
         .max(32)
         .optional()
         .describe(
-          "可选,普通调用 ≤4 项(grant_only 批量交接 ≤32 项):要交给插件处理或收录的图片/媒体文件。地址原样透传即可,四种写法都认:xdt-image://<会话ID>/<文件名>、cindy-media://blobs/<指纹>.<后缀>、消息里给出的本机绝对路径(主机会归一化并验归属),或本机媒体文件(图/视频/音频)的绝对路径。" + D_FILE_HANDOFF_PERMISSION + "不要自己拼地址。主机过户给该插件后以指纹注入 args.attachments。用户明确交出的媒体与当前 Agent / Core 工具刚生成、目标插件工具明确要求接收的结果都可使用;非媒体类型文件改用顶层 dir。",
+          "可选,普通调用 ≤4 项(grant_only 批量交接 ≤32 项):要交给插件处理或收录的图片/媒体文件。地址原样透传即可,四种写法都认:xdt-image://<会话ID>/<文件名>、cindy-media://blobs/<指纹>.<后缀>、消息里给出的本机绝对路径(主机会归一化并验归属),或本机媒体文件(图/视频/音频)的绝对路径。" + D_FILE_HANDOFF_PERMISSION + "不要自己拼地址。主机过户给该插件后以指纹注入 args.attachments。用户明确交出的媒体与当前 Agent / Core 工具刚生成、目标插件工具明确要求接收的结果都可使用;非媒体文件:目标工具参数声明了 cindy_handoff_files 时同样放进 attachments,否则改用顶层 dir。",
         ),
       dir: z
         .string()

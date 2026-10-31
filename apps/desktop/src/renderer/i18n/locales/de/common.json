@@ -7758,6 +7758,20 @@
         "revealed": "Aufgabe wird in der Aufgabenliste angezeigt",
         "revealFailed": "Aufgabe konnte nicht in der Aufgabenliste angezeigt werden"
       },
+      "handoff": {
+        "title": "In Chats an dieses Plugin übergebene Dateien",
+        "description": "Kopien von Dateien, die du in Chats an dieses Plugin übergeben hast. Jede Kopie wird 7 Tage nach der Übergabe automatisch gelöscht.",
+        "empty": "In Chats wurden diesem Plugin noch keine Dateien übergeben.",
+        "loadFailed": "Die Dateiliste konnte nicht geladen werden. Versuche es später erneut.",
+        "refresh": "Aktualisieren",
+        "meta": "{{size}} · Übergeben am {{handedAt}} · Automatisch gelöscht am {{expiresAt}}",
+        "delete": "Löschen",
+        "deleteNamed": "{{name}} löschen",
+        "deleteTitle": "Diese Datei löschen?",
+        "deleteDescription": "Nach dem Löschen können das Plugin und geöffnete Seiten „{{name}}“ nicht mehr verwenden. Dies kann nicht rückgängig gemacht werden.",
+        "deleteFailed": "Die Datei konnte nicht gelöscht werden. Versuche es später erneut.",
+        "cancel": "Abbrechen"
+      },
       "library": {
         "title": "Dauerhafte Bibliothek",
         "loading": "Bibliotheksinfos werden geladen…",
@@ -15771,6 +15785,7 @@
       "titleRevealPath": "Darf der Agent den lokalen Pfad dieser Mediendatei erhalten?",
       "count": "{{count}} Dateien",
       "descriptionAttachments": "Die folgenden Dateien liegen außerhalb des Arbeitsverzeichnisses dieser Sitzung. Wenn du zustimmst, werden sie diesem Plugin übergeben (es erhält nur Inhaltsfingerabdrücke, niemals Pfade).",
+      "descriptionHandoff": "Die folgenden Dateien liegen außerhalb des Arbeitsverzeichnisses dieser Sitzung. Wenn du zustimmst, erhält das Plugin Kopien davon (niemals die Pfade); die Kopien werden nach 7 Tagen automatisch gelöscht.",
       "descriptionDir": "Das folgende Verzeichnis bzw. die folgende Datei liegt außerhalb des Arbeitsverzeichnisses dieser Sitzung. Wenn du zustimmst, werden die Dateien diesem Plugin zum Hochladen übergeben (es erhält nur ein einmaliges Ticket, niemals Pfade).",
       "descriptionSaveDir": "Das folgende Verzeichnis liegt außerhalb des Arbeitsverzeichnisses dieser Sitzung. Wenn du zustimmst, kann dieses Plugin heruntergeladene Dateien darin speichern (vorhandene Dateien werden niemals überschrieben).",
       "descriptionRevealPath": "Der Pfad wird erst nach deiner Zustimmung an den aktuellen Agent übergeben und in den Gesprächsverlauf aufgenommen. Gekoppelte Geräte können diesen Verlauf synchronisieren. Dadurch erhält kein Plugin Zugriff auf die Datei.",

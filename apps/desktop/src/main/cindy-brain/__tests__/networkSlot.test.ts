@@ -5,7 +5,7 @@
  * 重定向逐跳守门、响应文本化与截断、错误折叠、在途并发闸、callId 归因。
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterAll, describe, it, expect, vi } from 'vitest';
 
 import { GhostNetworkSlot, type NetworkSlotDeps } from '../networkSlot';
 import {
@@ -2377,6 +2377,45 @@ describe('networkSlot · 多连接(connections,动态白名单 + 按 host 注入
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toContain('重定向');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Handoff copies leave only through upload.handoff, scoped to the receiving instance.
+// Rule: plugin-security-and-authoring.md §4 handoff. Gap: third upload source.
+// Tier: unit with the real store; minimum inputs are one copy and a foreign instance.
+describe('Handoff file upload', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { GhostHandoffStore } = await import('../handoffStore');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ghost-handoff-upload-'));
+  const store = new GhostHandoffStore({ root: () => root });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+  const readHandoffFile: NetworkSlotDeps['readHandoffFile'] = async (id, ref) => {
+    const opened = await store.open(id, ref);
+    if (!opened) return null;
+    try { return { bytes: await opened.file.readFile(), name: opened.info.name, mimeType: opened.info.mimeType }; }
+    finally { await opened.file.close(); }
+  };
+  const [copy] = await store.import('web-search', [{ name: '销售.csv', bytes: new TextEncoder().encode('a,b') }], () => {});
+  const upload = (value: Record<string, unknown>) => ({ url: 'https://api.search.brave.com/upload', method: 'POST', upload: value });
+
+  it('uploads the copy with its type and original name', async () => {
+    const { slot, fetchImpl } = makeSlot({ readHandoffFile });
+    expect(await slot.handleFetchRequest('web-search', upload({ handoff: [copy!.ref] }))).toMatchObject({ ok: true });
+    const body = new TextDecoder().decode((fetchImpl.mock.calls as unknown as [string, { body: Uint8Array }][])[0]![1].body);
+    expect(body).toContain(`filename="__.csv"; filename*=UTF-8''${encodeURIComponent('销售.csv')}`);
+    expect(body).toContain('Content-Type: text/csv; charset=utf-8\r\n\r\na,b\r\n');
+  });
+  it('treats another instance reference as unavailable without dispatching', async () => {
+    const { slot, fetchImpl } = makeSlot({ readHandoffFile });
+    expect(await slot.handleFetchRequest('other', upload({ handoff: [copy!.ref] }))).toMatchObject({ ok: false, errorCode: 'HANDOFF_UNAVAILABLE' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it('accepts exactly one upload source', async () => {
+    const { slot, fetchImpl } = makeSlot({ readHandoffFile });
+    expect(await slot.handleFetchRequest('web-search', upload({ handoff: [copy!.ref], hashes: ['a'.repeat(64)] }))).toMatchObject({ ok: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

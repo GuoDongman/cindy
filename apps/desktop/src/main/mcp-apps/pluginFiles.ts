@@ -20,7 +20,13 @@ export class PluginAppFiles {
     private readonly assertCurrent: () => Promise<void>,
   ) {}
 
-  async project<T>(value: T): Promise<T> {
+  /**
+   * Sign this card's plugin-owned links. `missing:'unsigned'` keeps an
+   * unavailable link as metadata only, so the card still opens; handoff copies
+   * always expire, so their links are kept that way anywhere in the card.
+   * Other links keep the strict default.
+   */
+  async project<T>(value: T, options: { missing?: 'reject' | 'unsigned' } = {}): Promise<T> {
     await this.assertCurrent();
     this.lifetime.signal.throwIfAborted();
     const visit = async (input: unknown, depth: number): Promise<unknown> => {
@@ -30,11 +36,12 @@ export class PluginAppFiles {
       if (
         object.type === 'resource_link' &&
         typeof object.uri === 'string' &&
-        /^(?:cindy-media:|library:)/.test(object.uri)
+        /^(?:cindy-media:|library:|handoff:)/.test(object.uri)
       ) {
         const info = await this.access.describe(this.instance, object.uri);
         await this.assertCurrent();
         this.lifetime.signal.throwIfAborted();
+        if (!info && (options.missing === 'unsigned' || object.uri.startsWith('handoff:'))) return object;
         if (!info) throw new Error('MCP_APP_FILE_NOT_AUTHORIZED');
         let token = [...this.grants].find(([, uri]) => uri === object.uri)?.[0];
         if (!token) {

@@ -214,6 +214,46 @@ it('issues opaque per-View file URLs and rejects other plugin references and sta
   another.close();
 });
 
+// Chat file handoff: card attachments sign only this instance's live copies; a
+// deleted or foreign copy stays as name/size so the View still opens. Rule:
+// plugin-security-and-authoring.md §4. Unit tier, real store + file access.
+it('signs live handoff copies and keeps unavailable attachments unsigned', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { GhostHandoffStore } = await import('../../cindy-brain/handoffStore.js');
+  const { createPluginFileAccess } = await import('../pluginFileAccess.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ghost-handoff-page-'));
+  try {
+    const store = new GhostHandoffStore({ root: () => root });
+    const [own, deleted] = await store.import('plugin', [
+      { name: 'a.csv', bytes: new TextEncoder().encode('a,b') },
+      { name: 'gone.csv', bytes: new TextEncoder().encode('x') },
+    ], () => {});
+    const [foreign] = await store.import('other', [{ name: 'b.csv', bytes: new TextEncoder().encode('y') }], () => {});
+    await store.delete('plugin', deleted!.ref);
+    const access = createPluginFileAccess({ libraryPath: async () => null, libraryMime: () => 'application/octet-stream',
+      openHandoff: async (instance, ref) => {
+        const opened = await store.open(instance, ref);
+        return opened && { file: opened.file, size: opened.info.size, mimeType: opened.info.mimeType };
+      } });
+    const files = new PluginAppFiles('card', 'plugin', access, async () => {});
+    const link = (file: typeof own) => ({ type: 'resource_link', name: file!.name, uri: file!.ref, mimeType: file!.mimeType, size: file!.size });
+    const [signed, missing, other] = await files.project([link(own), link(deleted), link(foreign)], { missing: 'unsigned' }) as Array<{ _meta?: { 'cindy/file': { url: string } } }>;
+    expect(missing).toEqual(link(deleted));
+    expect(other).toEqual(link(foreign));
+    const url = signed!._meta!['cindy/file'].url;
+    expect(await (await files.read(url.split('/').pop()!, new Request(url))).text()).toBe('a,b');
+    // Handoff links expire by design, so a result echoing one never blocks the card;
+    // other unavailable links keep the strict default.
+    expect(await files.project({ content: [link(deleted)] })).toEqual({ content: [link(deleted)] });
+    await expect(files.project([{ type: 'resource_link', name: 'x', uri: 'library:missing.csv' }])).rejects.toThrow('MCP_APP_FILE_NOT_AUTHORIZED');
+    files.close();
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // PR #7924 legacy compatibility: business content arrays are not MCP blocks.
 // Unit through the production adapter + real SDK transport; earlier fixtures
 // only returned standard text blocks, so malformed wire results went unnoticed.
