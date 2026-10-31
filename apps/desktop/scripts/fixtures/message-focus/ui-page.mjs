@@ -30,30 +30,64 @@ export default {
         return node && getComputedStyle(node).backgroundColor !== 'rgba(0, 0, 0, 0)';
       }, id);
     };
+    // Install before navigation: screenshot/audit latency must not eat the fade.
+    // Only record transitions whose destination is the original unlit style,
+    // so entrance frames cannot satisfy an exit assertion.
+    await target('first').evaluate((node) => {
+      const properties = { 'background-color': 'backgroundColor', 'box-shadow': 'boxShadow' };
+      const baseline = Object.fromEntries(
+        Object.values(properties).map((key) => [key, getComputedStyle(node)[key]]),
+      );
+      const exits = {};
+      window.__messageFocusFade = { baseline, exits };
+      const recordExit = (event) => {
+        const key = properties[event.propertyName];
+        if (event.target !== node || !key) return;
+        const animation = node
+          .getAnimations()
+          .find((item) => item.transitionProperty === event.propertyName);
+        if (!animation || animation.effect.getKeyframes().at(-1)[key] !== baseline[key]) return;
+        const elapsed = animation.currentTime;
+        const duration = animation.effect.getComputedTiming().duration;
+        // Sample the real CSS transition at exact progress points. This avoids
+        // depending on renderer frame rate during a short, token-based exit.
+        animation.pause();
+        animation.currentTime = 0;
+        const start = getComputedStyle(node)[key];
+        animation.currentTime = duration / 2;
+        const middle = getComputedStyle(node)[key];
+        animation.currentTime = duration;
+        const end = getComputedStyle(node)[key];
+        animation.currentTime = elapsed;
+        animation.play();
+        animation.finished.then(() => {
+          exits[key] = { start, middle, end, final: getComputedStyle(node)[key] };
+          if (Object.keys(exits).length === 2)
+            node.removeEventListener('transitionrun', recordExit);
+        });
+      };
+      node.addEventListener('transitionrun', recordExit);
+    });
     await locate('first');
-    await ui.capture('highlight');
-    // Sample actual browser paint through the timeout and CSS transition. A
-    // content update during the lifetime must not cancel or restart expiry.
+    // Update while the locator is active, before any potentially slow capture.
     await page.getByTestId('update').click();
-    const paints = await target('first').evaluate(
-      (node) =>
-        new Promise((resolve) => {
-          const started = performance.now();
-          const values = new Set();
-          const sample = () => {
-            values.add(getComputedStyle(node).backgroundColor);
-            if (performance.now() - started < 1700) requestAnimationFrame(sample);
-            else resolve([...values]);
-          };
-          sample();
-        }),
-    );
+    await ui.capture('highlight');
+    await page.waitForFunction(() => Object.keys(window.__messageFocusFade.exits).length === 2);
+    const { baseline, exits } = await page.evaluate(() => window.__messageFocusFade);
     assert.equal(
       await highlighted('first'),
       false,
       'Navigation highlight expires despite content updates',
     );
-    assert.ok(paints.length > 2, 'Highlight fades through intermediate paint values');
+    for (const key of ['backgroundColor', 'boxShadow']) {
+      assert.notEqual(
+        exits[key].middle,
+        exits[key].start,
+        `${key} leaves its lit value during exit`,
+      );
+      assert.notEqual(exits[key].middle, exits[key].end, `${key} has an intermediate exit value`);
+      assert.equal(exits[key].final, baseline[key], `${key} returns to its unlit value`);
+    }
     await ui.capture('faded');
     await locate('first'); // Repeat the same target after its previous expiry.
     await locate('second'); // Replace a still-visible target.
