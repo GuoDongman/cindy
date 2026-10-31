@@ -85,8 +85,14 @@ export default {
     await page.keyboard.press('Shift+Enter');
     await card.getByText('1/2', { exact: true }).waitFor();
     await body.click({ position: { x: 20, y: 120 } });
-    await page.keyboard.press('Escape');
+    await page.keyboard.down('Escape');
     await input.waitFor({ state: 'detached' });
+    await page.keyboard.down('Escape'); // Repeated keydown from the same physical press.
+    await page.keyboard.up('Escape');
+    await page.locator('[data-text-lightbox-overlay]').evaluate(async el => {
+      await Promise.all(el.getAnimations().map(animation => animation.finished.catch(() => {})));
+    });
+    assert.equal(await page.locator('[data-text-lightbox-overlay]').evaluate(el => getComputedStyle(el).opacity), '1');
     assert.equal(await card.isVisible(), true);
     assert.equal(await page.evaluate(() => CSS.highlights.has('cindy-find-in-page-match')), false);
     if (ui.case === 'focus-restore') {
