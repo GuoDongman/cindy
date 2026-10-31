@@ -1279,8 +1279,7 @@
     "handoffEnded": "Esta transferência de controle de entrada já terminou, então não há janela para mostrar.",
     "handoffUnavailable": "Este computador não pode mostrar apenas esta janela. Atualize o Cindy nele ou ative a área de trabalho remota.",
     "handoffWindow": "Transferência de controle de entrada · {{app}}",
-    "idleMinutes_many": "{{count}} minutos",
-    "inputUnsupported": "O Cindy não oferece suporte ao controle remoto do teclado e do mouse no ambiente de desktop atual deste computador."
+    "idleMinutes_many": "{{count}} minutos"
   },
   "ipcError": {
     "SSH_HARNESS_SWITCH_UNSUPPORTED": "Esta tarefa SSH não pode trocar de Harness. Escolha um modelo no Harness atual ou crie uma nova tarefa SSH com o Harness necessário.",

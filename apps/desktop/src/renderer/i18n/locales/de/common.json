@@ -1261,8 +1261,7 @@
     "credentialRequired": "Schließe die Überprüfung des Mac-Passworts ab. Falls sie nicht verfügbar ist, aktualisiere Cindy auf beiden Computern.",
     "handoffEnded": "Diese Eingabeübergabe ist bereits abgeschlossen. Es gibt kein Fenster mehr zum Anzeigen.",
     "handoffUnavailable": "Dieser Computer kann nicht nur dieses Fenster anzeigen. Aktualisiere Cindy darauf oder aktiviere dort den Remotedesktop.",
-    "handoffWindow": "Eingabeübergabe · {{app}}",
-    "inputUnsupported": "Cindy unterstützt in der aktuellen Desktop-Umgebung dieses Computers keine Fernsteuerung von Tastatur und Maus."
+    "handoffWindow": "Eingabeübergabe · {{app}}"
   },
   "ipcError": {
     "SSH_HARNESS_SWITCH_UNSUPPORTED": "Bei dieser SSH-Aufgabe lässt sich der Harness nicht wechseln. Wähle ein Modell im aktuellen Harness oder erstelle eine neue SSH-Aufgabe mit dem benötigten Harness.",
