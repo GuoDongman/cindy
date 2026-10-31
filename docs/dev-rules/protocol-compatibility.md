@@ -1,6 +1,6 @@
 # 跨端协议兼容
 
-## iPhone 桌面小组件快照（新增接口，尚未发布）
+## iPhone / Android 桌面小组件快照（新增接口，尚未发布）
 
 新增只读 invoke `device-link:usage-widget:snapshot:v1`（无参数），列入 Desktop
 `REMOTE_INVOKE_ALLOWLIST` 与 Mobile `MOBILE_REMOTE_INVOKE_CHANNELS`，由被控端 dispatch 在三道门之后拦截。
