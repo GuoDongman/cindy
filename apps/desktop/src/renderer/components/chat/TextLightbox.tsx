@@ -639,6 +639,7 @@ export function TextLightbox({ filePath, fileName, initialLine, triggerRef, onCl
             // emits flow content with its own margins.
             <div
               ref={bodyScrollRef}
+              data-text-lightbox-search-root
               className={cn(
                 'flex-1 overflow-y-auto overflow-x-hidden',
                 'text-14 leading-[1.6]',
