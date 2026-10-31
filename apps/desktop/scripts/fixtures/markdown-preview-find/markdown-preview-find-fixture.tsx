@@ -5,6 +5,8 @@ import { TextLightbox } from '../../../src/renderer/components/chat/TextLightbox
 import { FindInPageBar } from '../../../src/renderer/components/find-in-page/FindInPageBar';
 import { FileBodyView } from '../../../src/renderer/features/cc-agent/workdir-browse/FileBodyView';
 import { WorkdirBrowseSidebar } from '../../../src/renderer/features/cc-agent/workdir-browse/WorkdirBrowseSidebar';
+import type { AskUserDraft } from '../../../src/renderer/lib/makerChatStore';
+import { AskUserQuestionPrompt } from '../../../src/renderer/components/new-chat/AskUserQuestionPrompt';
 import { ChatInput } from '../../../src/renderer/components/new-chat/ChatInput';
 import { useAttachments } from '../../../src/renderer/hooks/useAttachments';
 import { getDefaultVoiceInputSettings } from '../../../src/shared/voiceInputData';
@@ -24,7 +26,16 @@ function VoiceComposer() {
     hideRuntimeControls showFolderPicker={false} disableAutofocus onSend={async () => true} />;
 }
 
-function Fixture({ editor, projectSearch, voice, video }: { editor: boolean; projectSearch: boolean; voice: boolean; video: boolean }) {
+const voiceQuestion = { requestId: 'fixture-ask', questions: [{ question: '请阅读文档后补充意见。' }] };
+function VoiceQuestion() {
+  const [draft, setDraft] = useState<AskUserDraft | null>(null);
+  return <AskUserQuestionPrompt sessionId="fixture-ask" workingDir="/fixture"
+    pending={voiceQuestion}
+    onAnswer={() => { throw new Error('The fixture must not submit the answer'); }}
+    draft={draft} onDraftChange={setDraft} viewerState="expanded" onViewerStateChange={() => {}} />;
+}
+
+function Fixture({ editor, projectSearch, voice, video, askVoice }: { editor: boolean; projectSearch: boolean; voice: boolean; video: boolean; askVoice: boolean }) {
   const [open, setOpen] = useState(false);
   useLayoutEffect(() => {
     if (!video) return;
@@ -43,6 +54,7 @@ function Fixture({ editor, projectSearch, voice, video }: { editor: boolean; pro
         <p>背景聊天中的苹果不应计入文档搜索。</p>
         <button data-testid="open-preview" onClick={() => setOpen(true)}>打开 Markdown 示例</button>
         {voice && <VoiceComposer />}
+        {askVoice && <VoiceQuestion />}
         {projectSearch && <div className="h-64 w-64"><WorkdirBrowseSidebar
           sessionId="fixture-session"
           workdir="/fixture"
@@ -104,6 +116,18 @@ mountPage({
       onDataChanged: subscription('voice'),
       getMicrophonePermissionCached: () => ({ ok: true, status: 'granted' }),
       onGlobalShortcutTrigger: subscription('voice-shortcut'),
+      getSystemPermissionsCached: () => ({ microphone: { ok: true }, accessibility: { ok: true } }),
+      getReadinessCached: () => ({ ok: true }),
+      getHistoryForRefinement: () => [],
+      onEvent: subscription('voice-dictation'),
+      start: async () => ({ ok: true, runId: 'fixture-ask-voice' }),
+      stop: async () => ({ ok: true }),
+      cancel: async () => {
+        const body = document.body;
+        body.dataset.askVoiceCancels = String(Number(body.dataset.askVoiceCancels ?? 0) + 1);
+        return { ok: true };
+      },
+      drainAudioQueue: async () => ({ ok: true }),
     },
     maker: {
       onDesktopCommandTriggered: subscription('desktop-command'),
@@ -116,5 +140,5 @@ mountPage({
     deviceLink: { onRemotePush: subscription('remote-push') },
     ghosts: { listSync: () => ({ ghosts: [] }) },
   }),
-  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} projectSearch={ctx.case === 'background-project-search'} voice={ctx.case === 'background-voice'} video={ctx.case === 'fullscreen-video'} />,
+  render: ctx => <Fixture editor={['background-editor', 'loading-editor'].includes(ctx.case)} projectSearch={ctx.case === 'background-project-search'} voice={ctx.case === 'background-voice'} video={ctx.case === 'fullscreen-video'} askVoice={ctx.case === 'background-ask-voice'} />,
 });

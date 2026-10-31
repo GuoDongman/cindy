@@ -714,7 +714,7 @@ export function FindInPageBar() {
   useAppShortcut('find-in-page', () => {
     // 局部接管者(如 doc 模式的 FileBodyView)存在时让位。
     const preview = getTextPreviewSearchHost();
-    if (preview && isLightboxCovered(preview)) return false;
+    if (preview && (isLightboxCovered(preview) || preview.contains(document.fullscreenElement))) return false;
     if (!preview && isFindInPageClaimed()) return false;
     if (!open || previewHost !== preview) rememberPreviewOpener(preview);
     setPreviewHost(preview);

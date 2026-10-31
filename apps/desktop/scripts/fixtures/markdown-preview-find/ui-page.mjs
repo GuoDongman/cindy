@@ -4,9 +4,15 @@ export default {
   name: 'markdown-preview-find',
   entry: './markdown-preview-find-fixture.tsx',
   viewport: { width: 1040, height: 760 },
-  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar, ChatInput keyboard handling, fullscreen video menus and shortcut ownership',
+  real: 'TextLightbox, MarkdownRenderer, FindInPageBar, FileBodyView, WorkdirBrowseSidebar, ChatInput and AskUserQuestionPrompt keyboard handling, fullscreen video menus and shortcut ownership',
   notCovered: 'Installed release, native menus/IME, PDF/draw.io, file/search backends, microphone capture and ASR; file/search data, video bytes and voice state are controlled fixtures',
   stubs: {
+    'src/renderer/voice-input/workletUrl': 'export function getVoiceInputWorkletUrl() { return "/fixture-worklet.js"; }',
+    'src/renderer/voice-input/captureSession': `export async function startVoiceInputCaptureSession(options) {
+      options.setEngine({ drainBufferedAudio: async () => {}, stop: async () => {} });
+      options.onCaptureReady?.();
+      return { ok: true, drainPendingChunks: () => {} };
+    }`,
     'src/renderer/features/cc-agent/workdir-browse/PdfPreview':
       'export function PdfPreview() { throw new Error("PDF is outside this Markdown fixture"); }',
     'src/renderer/features/cc-agent/workdir-browse/DrawioPreview':
@@ -33,6 +39,7 @@ export default {
     'ime-escape': { about: 'An IME-cancelling Escape and its repeats keep search open until a new press' },
     'outside-focus': { about: 'Escape closes find first even after Tab reaches the backdrop or covered page' },
     'background-project-search': { about: 'The covered project-search sidebar retains its mode and query until the document closes' },
+    'background-ask-voice': { about: 'Preview Escape preserves question-card dictation and its answer draft' },
     'background-voice': { about: 'Preview Escape leaves the real composer voice-cancel handler untouched until the document closes' },
     'fullscreen-video': { about: 'Fullscreen video exit and menus preserve search until a fresh Escape' },
     'toolbar-tooltip': { about: 'Focused and hovered toolbar tooltips own Escape before document find' },
@@ -51,6 +58,15 @@ export default {
       await page.keyboard.press(findKey);
       if (editor) await page.locator('[data-doc-search-bar]').waitFor();
       else await page.getByRole('searchbox').waitFor();
+    }
+    if (ui.case === 'background-ask-voice') {
+      await page.getByRole('textbox').fill('已有回答');
+      await page.getByTestId('ask-user-voice').click();
+      await page.waitForFunction(() => document.querySelector('[data-testid="ask-user-voice"]')?.getAttribute('aria-pressed') === 'true');
+      await page.waitForFunction(() => document.querySelector('[data-testid="ask-user-voice"]')?.getAttribute('aria-busy') === 'false');
+      await page.evaluate(() => window.__uiPage.emit('voice-dictation', {
+        type: 'draft', runId: 'fixture-ask-voice', text: '保留的回答语音', source: 'partial',
+      }));
     }
     await page.getByTestId('open-preview').click();
     const card = page.locator('[data-text-lightbox-card]');
@@ -114,6 +130,23 @@ export default {
     if (ui.case === 'fullscreen-video') {
       const video = card.locator('video');
       await page.waitForFunction(() => document.querySelector('video')?.readyState >= 2);
+      // Find must not focus a hidden sibling of the fullscreen video.
+      await page.keyboard.press('Escape');
+      await input.waitFor({ state: 'detached' });
+      await video.evaluate(async player => {
+        const changed = new Promise(resolve => document.addEventListener('fullscreenchange', resolve, { once: true }));
+        await player.requestFullscreen();
+        await changed;
+      });
+      await video.focus();
+      await page.keyboard.press(findKey);
+      assert.equal(await input.count(), 0);
+      assert.equal(await video.evaluate(player => document.activeElement === player), true);
+      await page.evaluate(() => document.exitFullscreen());
+      await page.waitForFunction(() => !document.fullscreenElement);
+      await page.keyboard.press(findKey);
+      await input.fill('苹果');
+      await card.getByText('1/2', { exact: true }).waitFor();
       for (const order of ['key-first', 'exit-first']) {
         await video.evaluate(async player => {
           const changed = new Promise(resolve => document.addEventListener('fullscreenchange', resolve, { once: true }));
@@ -121,6 +154,9 @@ export default {
           await changed;
         });
         await page.waitForFunction(() => document.fullscreenElement?.tagName === 'VIDEO');
+        await video.focus();
+        await page.keyboard.press(findKey);
+        assert.equal(await video.evaluate(player => document.activeElement === player), true);
         if (order === 'key-first') {
           await page.keyboard.press('Escape');
         } else {
@@ -267,6 +303,10 @@ export default {
       assert.equal(await projectInput.isVisible(), true);
       assert.equal(await projectInput.inputValue(), 'needle');
     }
+    if (ui.case === 'background-ask-voice') {
+      assert.equal(await page.evaluate(() => Number(document.body.dataset.askVoiceCancels ?? 0)), 0);
+      assert.equal(await page.getByTestId('ask-user-voice').getAttribute('aria-pressed'), 'true');
+    }
     if (ui.case === 'background-voice') {
       assert.equal(await page.evaluate(() => window.__fixtureVoiceCancels || 0), 0);
       assert.equal(await page.evaluate(() => window.__fixtureVoiceState), 'listening');
@@ -294,11 +334,20 @@ export default {
       await page.keyboard.press('Escape');
       await projectInput.waitFor({ state: 'hidden' });
     }
+    if (ui.case === 'background-ask-voice') {
+      assert.equal(await page.evaluate(() => Number(document.body.dataset.askVoiceCancels ?? 0)), 0);
+      assert.equal(await page.getByTestId('ask-user-voice').getAttribute('aria-pressed'), 'true');
+    }
     if (ui.case === 'background-voice') {
       assert.equal(await page.evaluate(() => window.__fixtureVoiceCancels || 0), 0);
       await page.keyboard.press('Escape');
       assert.equal(await page.evaluate(() => window.__fixtureVoiceCancels), 1);
       assert.equal(await page.evaluate(() => window.__fixtureVoiceState), 'idle');
+    }
+    if (ui.case === 'background-ask-voice') {
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.body.dataset.askVoiceCancels === '1');
+      assert.equal(await page.getByRole('textbox').inputValue(), '已有回答');
     }
     await page.keyboard.press(findKey);
     if (editor) await page.locator('[data-doc-search-bar] input').fill('苹果');
