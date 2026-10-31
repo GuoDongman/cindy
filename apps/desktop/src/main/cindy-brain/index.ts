@@ -10279,7 +10279,14 @@ export function registerGhostIpc(): void {
     assertTrustedAppRendererEvent(event);
     const key = handoffStorageKey(id);
     if (typeof ref !== 'string' || !GHOST_HANDOFF_REF_RE.test(ref)) throwIpcError('INVALID_PARAMS', '非法文件引用');
-    return { existed: await getGhostHandoffStore().delete(key, ref) };
+    // Held like a call: a source change waits for the delete and refuses one that starts during it.
+    const release = getGhostHandoffStore().hold(key);
+    if (!release) throwIpcError('PRECONDITION_FAILED', '插件正在更换来源,请稍后再删除');
+    try {
+      return { existed: await getGhostHandoffStore().delete(key, ref) };
+    } finally {
+      release();
+    }
   });
   registerPluginUsageIpc({
     ipcMain, assertTrusted: assertTrustedAppRendererEvent, service: currentPluginUsageService,

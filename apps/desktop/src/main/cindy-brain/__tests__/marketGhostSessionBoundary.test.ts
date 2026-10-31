@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 /**
  * Regression guards for the market Node-authorization/session-switch race.
@@ -243,6 +243,44 @@ describe('market Ghost session boundary', () => {
     await expect(relocateGhostUserData('old', 'archive')).rejects.toThrow('move failed');
     expect(during).toEqual([null, null]);
     expect(store.hold('old')).toBeTypeOf('function');
+  });
+
+  // Codex 4431705287: a settings delete must not race the folder move of a source change.
+  // Unit, real IPC callback + real store on a temp root.
+  it('holds the instance for a settings delete and refuses one during a source change', async () => {
+    const { createGhostProductionCallbacks } = await import('./ghostProductionCallbacksFixture.js');
+    const { GhostHandoffStore } = await import('../handoffStore.js');
+    const { GHOST_HANDOFF_REF_RE } = await import('../../../shared/ghost.js');
+    const nodeFs = await import('node:fs');
+    const os = await import('node:os');
+    const nodePath = await import('node:path');
+    const root = nodeFs.mkdtempSync(nodePath.join(os.tmpdir(), 'ghost-handoff-delete-'));
+    try {
+      const store = new GhostHandoffStore({ root: () => root });
+      const [first, second] = await store.import('art', [
+        { name: 'a.csv', bytes: new TextEncoder().encode('1') }, { name: 'b.csv', bytes: new TextEncoder().encode('2') },
+      ], () => {});
+      const busy: boolean[] = [];
+      const remove = store.delete.bind(store);
+      vi.spyOn(store, 'delete').mockImplementation((...args) => { busy.push(store.isBusy('art')); return remove(...args); });
+      const { handoffDelete } = createGhostProductionCallbacks<{ handoffDelete(event: unknown, id: unknown, ref: unknown): Promise<unknown> }>({
+        callbacks: { handoffDelete: ['ipcMain.handle', 'ghosts:handoff-delete'] },
+      })({
+        assertTrustedAppRendererEvent: () => {}, handoffStorageKey: () => 'art', GHOST_HANDOFF_REF_RE,
+        getGhostHandoffStore: () => store,
+        throwIpcError: (code: string, message: string) => { throw Object.assign(new Error(message), { code }); },
+      });
+
+      const unblock = store.blockForRelocation(['art']);
+      await expect(handoffDelete({}, 'art', first!.ref)).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+      unblock();
+      await expect(handoffDelete({}, 'art', second!.ref)).resolves.toEqual({ existed: true });
+      expect(busy).toEqual([true]);
+      expect(store.isBusy('art')).toBe(false);
+      expect((await store.list('art')).map((file) => file.name)).toEqual(['a.csv']);
+    } finally {
+      nodeFs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('allows explicit local replacement and detaches market routing before landing', () => {
