@@ -46,6 +46,7 @@ import {
   showMobilePluginTaskPermission,
   setPluginTaskHandler,
   setPluginTargetAdapter,
+  setPluginObserveAdapter,
   assertPluginTargetQueuedDelivery,
   getPluginTaskSourceSessionId,
   setPluginTaskUninstaller,
@@ -60,6 +61,7 @@ import {
   acceptPluginInvocation,
 } from '../cindy-brain/index.js';
 import { listPluginTargetCandidates, resolvePluginTargetSession } from './pluginTargetCandidates.js';
+import { assertPluginObservableTask, listPluginObserveTasks } from './pluginObserveTasks.js';
 import { createPluginTargetStore } from './pluginTargetStore.js';
 import { collectPluginAttachmentPayloadTexts, withPluginMessageAttachments } from '../cindy-media/pluginMessageAttachments.js';
 import { isPluginTaskPermissionMode, type PluginTaskRoute, type PluginTaskRequest } from '../../shared/pluginTasks.js';
@@ -1116,6 +1118,7 @@ import {
 import { INPUT_HANDOFF_LOCAL_CHANNEL, INPUT_HANDOFF_LOCAL_PICTURE_CHANNEL, type InputHandoffHolder, type InputHandoffSnapshot } from '@cindy/device-link';
 import { getInputHandoffService, initInputHandoffService } from '../input-handoff/service.js';
 import { closeInputHandoffAskpass, initInputHandoffAskpass } from '../input-handoff/askpass/index.js';
+import { resolveGithubAuthRecovery } from '../input-handoff/askpass/githubRecoveryHost.js';
 import { onQuit } from '../lifecycle.js';
 import { isInputHandoffDisabledForSession } from '../input-handoff/botPolicy.js';
 import { createMacHandoffDriver, readPictureQr } from '../input-handoff/macDriver.js';
@@ -3664,6 +3667,7 @@ initInputHandoffService({
 });
 // sudo / ssh / git password prompts in the owner's local tasks become one-step 代输入 cards.
 initInputHandoffAskpass({
+  getAuthRecovery: resolveGithubAuthRecovery,
   startTerminalPrompt: (request) => getInputHandoffService()?.startTerminalPrompt(request) ?? { ok: false },
   isDisabledForSession: isInputHandoffDisabledForSession,
   logger: log,
@@ -15037,6 +15041,14 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     }
   };
   setPluginTaskHandler(handlePluginTask);
+  setPluginObserveAdapter({
+    projectTasks: listPluginObserveTasks,
+    openTask: async (taskId, guard) => {
+      await assertPluginObservableTask(taskId);
+      guard();
+      openMainWindowSession(taskId, { focus: 'if-active' });
+    },
+  });
   let pluginTargetReviewReady = false;
   setPluginTargetAdapter({
     prepareInvocation: preparePluginInvocation,
