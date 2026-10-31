@@ -557,6 +557,9 @@ describe('ghost · 清单校验', () => {
     expect(ghostLocalePathFor(parsed.manifest, 'ja')).toBe('locales/ja.json');
     expect(ghostLocalePathFor(parsed.manifest, 'zh-CN')).toBe('locales/en.json');
     expect(ghostLocalePathFor(parsed.manifest, 'zh-TW')).toBe('locales/zh-TW.json');
+    expect(ghostLocalePathFor(parsed.manifest, 'zh-Hant-x-lzh')).toBe('locales/zh-TW.json');
+    // No simplified Chinese resource: its classical edition still falls back to English.
+    expect(ghostLocalePathFor(parsed.manifest, 'zh-Hans-x-lzh')).toBe('locales/en.json');
     expect(ghostLocalePathFor(parsed.manifest, 'fr')).toBe('locales/fr.json');
     expect(ghostLocalePathFor(parsed.manifest, 'fr-FR')).toBe('locales/en.json');
     expect(withGhostResolvedLocale(parsed.manifest, 'ko').resolvedLocale).toBe('ko');
