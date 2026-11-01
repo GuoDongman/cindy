@@ -158,8 +158,8 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
     multi = null,
     hold = null,
     moved = false,
-    // 虚拟鼠标手柄的“光标 - 手指”偏移;只在按住期间有效。
-    handleOffset = null;
+    // 本次手势是否从鼠标图标上开始(否则当平移画面处理)。
+    handleGrab = false;
   const pointers = new Map();
   const mouseButtons = find("mouse-buttons"),
     wheel = find("mouse-wheel"),
@@ -946,6 +946,7 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
   cleanups.push(() => clearInterval(inputTimer));
   function release() {
     nativeTouchpad = null;
+    handleGrab = false;
     stopEdgePan();
     desktopPan = null;
     clearTimeout(hold);
@@ -1085,35 +1086,34 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
   // 箭头轮廓:尖端在左上角(0,0),与热点对齐。
   const HANDLE_ARROW_CLIP =
     "polygon(0 0,0 26px,7px 19px,12px 29px,17px 27px,12px 17px,21px 17px)";
+  /** 手指是否按在鼠标图标上(命中半径 44px)。 */
+  function onHandle(finger) {
+    const r = layout();
+    return (
+      Math.hypot((finger.x - cx) * r.width, (finger.y - cy) * r.height) <=
+      HANDLE_GRAB_PX
+    );
+  }
+  /**
+   * 图标随手指 1:1 移动，并始终抬到手指上方（放不下时改放下方），免得被指尖挡住。
+   * 抬升量在靠近桌面底边时收窄，保证最下面几行（Dock / 任务栏）也点得到。
+   */
   function moveHandle(finger) {
-    if (!handleOffset) return;
-    cx = clamp(finger.x + handleOffset.x);
-    cy = clamp(finger.y + handleOffset.y);
+    if (!handleGrab) return;
+    const r = layout();
+    const lift = HANDLE_LIFT_PX / Math.max(1, r.height);
+    const roomAbove =
+      finger.y - lift >= 0 && r.y + (finger.y - lift) * r.height >= 0;
+    const roomBelow =
+      finger.y + lift <= 1 &&
+      r.y + (finger.y + lift) * r.height <= viewportHeight();
+    const dy = roomAbove || !roomBelow
+      ? Math.max(-lift, finger.y - 1)
+      : Math.min(lift, 1 - finger.y);
+    cx = clamp(finger.x);
+    cy = clamp(finger.y + dy);
     queue({ kind: "move", x: cx, y: cy });
     render();
-  }
-  function grabHandle(finger) {
-    const r = layout();
-    const onCursor =
-      Math.hypot((finger.x - cx) * r.width, (finger.y - cy) * r.height) <=
-      HANDLE_GRAB_PX;
-    if (onCursor) {
-      handleOffset = { x: cx - finger.x, y: cy - finger.y };
-    } else {
-      // 默认浮在手指上方;桌面内或屏幕上放不下时改放下方。
-      const lift = HANDLE_LIFT_PX / Math.max(1, r.height);
-      const roomAbove =
-        finger.y - lift >= 0 && r.y + (finger.y - lift) * r.height >= 0;
-      const roomBelow =
-        finger.y + lift <= 1 &&
-        r.y + (finger.y + lift) * r.height <= viewportHeight();
-      // 越靠近桌面底边抬升量越小,否则光标永远差一截,够不到最下面几行(Dock / 任务栏)。
-      const dy = roomAbove || !roomBelow
-        ? Math.max(-lift, finger.y - 1)
-        : Math.min(lift, 1 - finger.y);
-      handleOffset = { x: 0, y: dy };
-    }
-    moveHandle(finger);
   }
   const desktopPoint = (e) => {
     const bounds = stage.getBoundingClientRect();
@@ -1377,8 +1377,9 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
       start = { x: e.clientX, y: e.clientY };
       last = start;
       moved = false;
-      // 手柄模式下立刻把光标提到手指旁边,后续拖动 1:1 跟随。
-      if (mode === "handle" && control) grabHandle(point(start));
+      // 手柄模式:只有按住鼠标图标时才「拿起」它;按在空处拖动等于平移画面。
+      handleGrab = mode === "handle" && control && onHandle(point(start));
+      if (handleGrab) moveHandle(point(start));
       hold = setTimeout(() => {
         if (
           control &&
@@ -1386,7 +1387,8 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
           !moved &&
           pointers.size === 1 &&
           !heldMouse.size &&
-          (mode !== "touch" || insideDesktop(start))
+          (mode !== "touch" || insideDesktop(start)) &&
+          (mode !== "handle" || handleGrab)
         ) {
           if (mode === "touch") {
             const p = point(start);
@@ -1452,14 +1454,15 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
       moved = true;
       clearTimeout(hold);
     }
-    if (mode === "handle") {
+    if (mode === "handle" && handleGrab) {
       if (control) moveHandle(point(now));
       return;
     }
     if (
       !control ||
       mode === "pan" ||
-      (mode === "touch" && !drag && !heldMouse.size)
+      (mode === "touch" && !drag && !heldMouse.size) ||
+      (mode === "handle" && !handleGrab)
     ) {
       pan(dx, dy);
       return;
@@ -1499,7 +1502,8 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
       gestureFrame = null;
     }
     pointers.delete(e.pointerId);
-    handleOffset = null;
+    const grabbed = handleGrab;
+    handleGrab = false;
     if (drag) {
       queue({ kind: "button", button: 0, down: false, x: cx, y: cy });
       drag = false;
@@ -1510,7 +1514,9 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
       mode !== "pan" &&
       !heldMouse.size &&
       e.type === "pointerup" &&
-      (mode !== "touch" || insideDesktop({ x: e.clientX, y: e.clientY }))
+      (mode === "handle"
+        ? grabbed
+        : mode !== "touch" || insideDesktop({ x: e.clientX, y: e.clientY }))
     ) {
       if (mode === "touch") {
         const p = point({ x: e.clientX, y: e.clientY });
@@ -2571,7 +2577,7 @@ export function mountRemoteDesktopViewer(root, postMessage, config) {
         settlePan();
         clearTimeout(touchCursorTimer);
         touchCursorVisible = false;
-        handleOffset = null;
+        handleGrab = false;
         mode = message.mode;
         render();
         break;
