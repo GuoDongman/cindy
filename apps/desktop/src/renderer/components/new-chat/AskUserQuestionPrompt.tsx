@@ -31,6 +31,7 @@ import { visibleAskOptions } from '@cindy/maker-shared';
 import { InteractionPromptCardShell } from '@/components/interaction-portal';
 import { ChatSessionFileProvider, useChatSessionFile, useChatSessionFileValue } from '@/components/chat/ChatSessionFileContext';
 import { QuestionReferenceText } from '@/components/chat/MarkdownRenderer';
+import { getTextPreviewSearchHost } from '@/components/find-in-page/findInPageOwnership';
 import { useOptionalConfirmDialog } from '@/components/ui/confirm-dialog-provider';
 import { Tip } from '@/components/ui/tooltip';
 import { useAutoResize } from '@/hooks/useAutoResize';
@@ -41,7 +42,7 @@ import { cn } from '@/lib/utils';
 import type { AskUserDraft, AskUserViewerState, PendingAskUser } from '@/lib/makerChatStore';
 import { requestRendererMicrophonePermission } from '@/voice-input/startGuards';
 import { formatVoiceInputShortcut, isVoiceInputShortcutMatch } from '@/voice-input/shortcut';
-import { createComposerLongPressVoiceGesture } from '@/voice-input/composerLongPressGesture';
+import { createComposerLongPressVoiceGesture, isComposerLongPressVoiceReady } from '@/voice-input/composerLongPressGesture';
 import { nextAskUserVoiceShortcutOrder, registerAskUserVoiceShortcutCard } from './askUserVoiceShortcutOwner';
 import { useAskUserDictation } from './useAskUserDictation';
 import { parseVoiceQuestionSelection, type VoiceQuestionBridge, type VoiceQuestionTarget } from './voiceQuestionSelection';
@@ -93,7 +94,7 @@ function AutoGrowingAnswerTextarea({
     const press = (event: PointerEvent) => {
       if (!voiceRef.current || field.readOnly || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       if (event.pointerType && event.pointerType !== 'mouse') return;
-      if (getVoiceInputSettings().composerLongPressEnabled === false) return;
+      if (getVoiceInputSettings().composerLongPressEnabled === false || !isComposerLongPressVoiceReady()) return;
       pointerId = event.pointerId;
       gesture.press({ x: event.clientX, y: event.clientY });
     };
@@ -653,6 +654,7 @@ function AskUserQuestionForm({
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.isComposing) return;
+      if (event.key === 'Escape' && getTextPreviewSearchHost()) return;
       if (event.key === 'Escape' && dictationRef.current.isBusy && shortcutCard.owns(event.target)) {
         event.preventDefault();
         event.stopPropagation();
